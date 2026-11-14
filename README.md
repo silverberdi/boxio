@@ -33,4 +33,4 @@ Esta documentación constituye el contexto de negocio y de producto para OpenSpe
 
 ## Trazabilidad
 
-Los requisitos persistentes residen en estos documentos hasta que sean formalizados como especificaciones OpenSpec. Los cambios ejecutables deben usar el flujo **nativo de OpenSpec**, no una imitación. Los issues de GitHub deben referenciar IDs de requisitos y cambios, sin duplicar ni reinterpretar contratos. No existe aún backlog aprobado ni especificaciones de implementación creadas.
+Los requisitos persistentes residen en estos documentos hasta que sean formalizados como especificaciones OpenSpec. Los cambios ejecutables deben usar el flujo **nativo de OpenSpec**, no una imitación. Los issues de GitHub deben referenciar IDs de requisitos y cambios, sin duplicar ni reinterpretar contratos. El backlog inicial de planificación está publicado en los [issues #1–#9](https://github.com/silverberdi/boxio/issues). Su creación no autoriza la ejecución; cada incremento requiere su change nativo OpenSpec y las decisiones abiertas pertinentes. Los assets disponibles se inventarían en [assets/README.md](assets/README.md).
