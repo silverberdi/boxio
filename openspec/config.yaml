@@ -1,0 +1,41 @@
+# Contexto de proyecto para OpenSpec. Revisar contra la versión de CLI instalada antes de extender este archivo.
+schema: spec-driven
+
+context: |
+  Proyecto: Boxio, juego multijugador casual inspirado en Puntos y Cajas.
+  Idioma de trabajo/documentación: español. Tecnología y código pueden usar inglés.
+  Etapa: definición; NO implementar ni desplegar salvo trabajo explícitamente autorizado.
+  Fuente de verdad de negocio:
+    - docs/PRODUCT.md
+    - docs/GAMEPLAY.md
+    - docs/EXPERIENCE.md
+    - docs/DECISIONS.md
+  Arquitectura de referencia: docs/ARCHITECTURE.md.
+  Entregas e integración con mini me: docs/DELIVERY.md.
+  Importante: todas las regiones son CUADRADOS; siluetas como corazón/cruz/estrella
+  son arreglos de cuadrados, nunca triángulos/hexágonos.
+  MVP: invitado, máquina, local, privado online hasta cuatro participantes,
+  público online 1v1, PWA mobile-first.
+  Regla de juego: 1 punto por cuadrado, turno extra al cerrar uno o más.
+  Desconexión: reserva de 60 segundos; revisar detalles por modalidad.
+  No interpretar propuestas/alternativas OPEN como acuerdos definitivos.
+  Evitar sobreingeniería y cambios fuera del issue vigente.
+  Usar workflows nativos OpenSpec y escenarios verificables, sin simularlos.
+
+rules:
+  proposal:
+    - Especificar objetivo, valor para el jugador, alcance y fuera de alcance.
+    - Referenciar requisitos y decisiones existentes; separar MVP y segunda iteración.
+    - No resolver unilateralmente decisiones OPEN con impacto funcional.
+  specs:
+    - Usar requisitos explícitos y escenarios Dado/Cuando/Entonces verificables.
+    - Cubrir casos nominales, límite, errores, concurrencia y accesibilidad según aplique.
+    - Preservar invariantes documentados en docs/GAMEPLAY.md.
+  design:
+    - Justificar límites entre motor puro, UI y servidor autoritativo online.
+    - Preferir tecnologías y servicios mínimos; documentar trade-offs reales.
+    - Conservar portabilidad hacia hosting alternativo y Capacitor.
+  tasks:
+    - Dividir por resultados verificables y mantener trazabilidad al requisito.
+    - Incluir pruebas apropiadas, sin pruebas cosméticas o validaciones duplicadas.
+    - No desplegar ni ejecutar cambios ajenos al alcance.
