@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "usage": "Candidate templates; silhouette approval OPEN-02 still pending",
+  "legend": "# = present unit square, . = missing",
+  "templates": [
+    {
+      "id": "heart-small",
+      "rows": [
+        ".##.##.",
+        "#######",
+        "#######",
+        ".#####.",
+        "..###..",
+        "...#..."
+      ]
+    },
+    {
+      "id": "cross-small",
+      "rows": [
+        "..##..",
+        "..##..",
+        "######",
+        "######",
+        "..##..",
+        "..##.."
+      ]
+    },
+    {
+      "id": "t-small",
+      "rows": [
+        "#######",
+        "#######",
+        "...#...",
+        "...#...",
+        "...#...",
+        "...#..."
+      ]
+    },
+    {
+      "id": "star-small",
+      "rows": [
+        "...#...",
+        "..###..",
+        "#######",
+        ".#####.",
+        "..###..",
+        ".#...#."
+      ]
+    }
+  ],
+  "status": "CANDIDATE",
+  "note": "Must verify connectivity, playable edge graph and final UX dimensions before activation."
+}
