@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "status": "DESIGN_PROPOSAL",
+  "colors": {
+    "blue": "#1E88FF",
+    "yellow": "#FFC72C",
+    "coral": "#FF5A6B",
+    "green": "#34D26A",
+    "purple": "#A855F7",
+    "navy": "#082C7C",
+    "sky": "#BDE8FF",
+    "white": "#FFFFFF"
+  },
+  "players": [
+    "blue",
+    "yellow",
+    "coral",
+    "green"
+  ],
+  "typeface": "rounded system fallback; font licensing and final face pending",
+  "motion": {
+    "edgeMs": 80,
+    "captureMs": 240,
+    "multiMs": 420,
+    "turnMs": 130
+  },
+  "note": "Visual reference only, may be adjusted after UX validation. Four players maximum; purple is a decorative accent."
+}
