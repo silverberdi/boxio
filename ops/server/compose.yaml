@@ -8,6 +8,7 @@ services:
       api:
         condition: service_healthy
     networks:
+      - edge
       - app
     read_only: true
     cap_drop: [ALL]
@@ -45,6 +46,7 @@ services:
       start_period: 5s
 
 networks:
+  edge:
   app:
     internal: true
   database:
