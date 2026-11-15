@@ -16,7 +16,7 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m,mode=1777
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz"]
       interval: 15s
       timeout: 3s
       retries: 5
