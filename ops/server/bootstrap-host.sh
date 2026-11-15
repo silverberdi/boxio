@@ -19,6 +19,7 @@ install -d -o root -g root -m 0755 /opt/apps/boxio /etc/container-apps /var/lib/
 install -o root -g root -m 0644 "$repo_root/ops/server/compose.yaml" /opt/apps/boxio/compose.yaml
 install -o root -g root -m 0600 "$repo_root/ops/server/boxio.conf" /etc/container-apps/boxio.conf
 install -o root -g root -m 0755 "$repo_root/ops/server/deploy-container-app" /usr/local/sbin/deploy-container-app
+install -o root -g root -m 0755 "$repo_root/ops/server/restrict-app-postgres-access" /usr/local/sbin/restrict-app-postgres-access
 
 if ! id boxio-runner >/dev/null 2>&1; then
   useradd --system --create-home --home-dir /home/boxio-runner --shell /usr/sbin/nologin boxio-runner
@@ -114,6 +115,8 @@ GRANT CONNECT ON DATABASE boxio TO boxio_app;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO boxio_app;
 SQL
+
+/usr/local/sbin/restrict-app-postgres-access boxio
 
 install -o root -g root -m 0755 "$repo_root/ops/server/backup-container-app-db" /usr/local/sbin/backup-container-app-db
 install -d -o root -g root -m 0700 /home/silverman/compartido_mac/backups/boxio

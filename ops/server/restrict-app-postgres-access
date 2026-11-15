@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+app_id="${1:-}"
+if [[ ! "$app_id" =~ ^[a-z][a-z0-9-]{1,30}$ ]]; then
+  echo "invalid app id" >&2
+  exit 2
+fi
+
+postgres_container=local-ai-stack-postgres-1
+network_name="${app_id}-db"
+database_name="$app_id"
+database_role="${app_id}_app"
+network_cidr="$(docker network inspect "$network_name" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}')"
+if [[ ! "$network_cidr" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$ ]]; then
+  echo "invalid IPv4 subnet for app database network" >&2
+  exit 2
+fi
+
+hba_path="$(docker exec "$postgres_container" psql -U n8n -d postgres -Atc 'SHOW hba_file')"
+allow_line="host ${database_name} ${database_role} ${network_cidr} scram-sha-256"
+reject_ipv4="host all ${database_role} 0.0.0.0/0 reject"
+reject_ipv6="host all ${database_role} ::/0 reject"
+
+docker exec -i "$postgres_container" sh -s -- "$hba_path" "$app_id" "$allow_line" "$reject_ipv4" "$reject_ipv6" <<'CONTAINER'
+set -eu
+hba_path="$1"
+app_id="$2"
+allow_line="$3"
+reject_ipv4="$4"
+reject_ipv6="$5"
+anchor='host all all all scram-sha-256'
+
+if [ ! -f "$hba_path" ] || [ -L "$hba_path" ]; then
+  echo "PostgreSQL HBA file is missing or symlinked" >&2
+  exit 2
+fi
+if [ "$(grep -Fxc "$anchor" "$hba_path" || true)" -ne 1 ]; then
+  echo "expected one catch-all SCRAM rule in PostgreSQL HBA file" >&2
+  exit 2
+fi
+
+present=0
+for rule in "$allow_line" "$reject_ipv4" "$reject_ipv6"; do
+  if grep -Fxq "$rule" "$hba_path"; then
+    present=$((present + 1))
+  fi
+done
+if [ "$present" -eq 3 ]; then
+  exit 0
+fi
+if [ "$present" -ne 0 ]; then
+  echo "partial app HBA policy exists; refusing to guess its intended order" >&2
+  exit 2
+fi
+
+backup_path="${hba_path}.pre-${app_id}-network-policy"
+if [ ! -e "$backup_path" ]; then
+  cp "$hba_path" "$backup_path"
+fi
+temporary_path="${hba_path}.tmp"
+trap 'rm -f "$temporary_path"' EXIT
+awk -v allow="$allow_line" -v reject4="$reject_ipv4" -v reject6="$reject_ipv6" -v anchor="$anchor" '
+  $0 == anchor {
+    print allow
+    print reject4
+    print reject6
+    inserted = 1
+  }
+  { print }
+  END { if (!inserted) exit 3 }
+' "$hba_path" > "$temporary_path"
+chmod "$(stat -c '%a' "$hba_path")" "$temporary_path"
+chown "$(stat -c '%u:%g' "$hba_path")" "$temporary_path"
+mv "$temporary_path" "$hba_path"
+CONTAINER
+
+error_count="$(docker exec "$postgres_container" psql -U n8n -d postgres -Atc 'SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL')"
+if [[ "$error_count" != 0 ]]; then
+  echo "PostgreSQL reported invalid HBA rules; restore the HBA backup before continuing" >&2
+  exit 1
+fi
+docker exec "$postgres_container" psql -U n8n -d postgres -v ON_ERROR_STOP=1 -Atc 'SELECT pg_reload_conf()' >/dev/null
+echo "PostgreSQL network access for ${database_role} is restricted to database ${database_name} from ${network_cidr}"
