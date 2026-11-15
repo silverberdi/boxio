@@ -25,6 +25,10 @@ if [[ "${COMPOSE_FILE:-}" != "/opt/apps/${app_id}/compose.yaml" || "${ENV_FILE:-
   echo "invalid deployment paths for app" >&2
   exit 2
 fi
+if [[ ! "${IMAGE_TAG_ENV:-}" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
+  echo "invalid image tag environment variable" >&2
+  exit 2
+fi
 if [[ ! "${REPOSITORY:-}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ || ! "${COMPOSE_SOURCE_PATH:-}" =~ ^ops/server/[A-Za-z0-9_.-]+\.yaml$ ]]; then
   echo "invalid Compose source configuration" >&2
   exit 2
@@ -68,7 +72,8 @@ curl --fail --silent --show-error --location --retry 3 \
 chmod 0600 "$candidate_compose"
 
 compose=(docker compose --project-name "$app_id" --env-file "$ENV_FILE")
-export BOXIO_IMAGE_TAG="$image_tag"
+printf -v "$IMAGE_TAG_ENV" '%s' "$image_tag"
+export "$IMAGE_TAG_ENV"
 if ! "${compose[@]}" --file "$candidate_compose" config --quiet; then
   echo "Compose from ${image_tag} is invalid; leaving the current deployment untouched" >&2
   exit 1
@@ -85,7 +90,8 @@ if ! "${compose[@]}" pull || ! "${compose[@]}" up --detach --remove-orphans --wa
     echo "deployment failed; restoring the last healthy image and Compose file" >&2
     install -o root -g root -m 0644 "$state_compose" "${COMPOSE_FILE}.rollback"
     mv -f "${COMPOSE_FILE}.rollback" "$COMPOSE_FILE"
-    export BOXIO_IMAGE_TAG="$previous_tag"
+    printf -v "$IMAGE_TAG_ENV" '%s' "$previous_tag"
+    export "$IMAGE_TAG_ENV"
     "${compose[@]}" pull || true
     "${compose[@]}" up --detach --remove-orphans --wait --wait-timeout 90 || true
   else

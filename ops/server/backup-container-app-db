@@ -19,13 +19,16 @@ if [[ "${DB_CONTAINER:-}" != local-ai-stack-postgres-1 || "${DB_NAME:-}" != "$ap
   echo "invalid backup configuration" >&2
   exit 2
 fi
+if [[ ! "${DB_PASSWORD_VAR:-}" =~ ^[A-Z_][A-Z0-9_]*$ ]]; then
+  echo "invalid database password variable configuration" >&2
+  exit 2
+fi
 if [[ ! -f "$ENV_FILE" || -L "$ENV_FILE" || "$(stat -c '%U:%G:%a' "$ENV_FILE")" != "root:root:600" ]]; then
   echo "app environment file is missing or insecure" >&2
   exit 2
 fi
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-if [[ ! "${BOXIO_DB_PASSWORD:-}" =~ ^[0-9a-f]{64}$ ]]; then
+database_password="$(sed -n "s/^${DB_PASSWORD_VAR}=//p" "$ENV_FILE")"
+if [[ ! "$database_password" =~ ^[0-9a-f]{64}$ ]]; then
   echo "invalid database secret" >&2
   exit 2
 fi
@@ -36,9 +39,10 @@ backup_path="${BACKUP_DIR}/${app_id}-${timestamp}.dump"
 temporary_path="${backup_path}.partial"
 trap 'rm -f "$temporary_path"' EXIT
 
-docker exec --env PGPASSWORD="$BOXIO_DB_PASSWORD" "$DB_CONTAINER" \
+docker exec --env PGPASSWORD="$database_password" "$DB_CONTAINER" \
   pg_dump --host=127.0.0.1 --username="$DB_USER" --dbname="$DB_NAME" \
     --format=custom --no-owner --no-acl > "$temporary_path"
+unset database_password
 test -s "$temporary_path"
 chmod 0600 "$temporary_path"
 mv "$temporary_path" "$backup_path"
