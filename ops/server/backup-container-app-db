@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+app_id="${1:-}"
+if [[ ! "$app_id" =~ ^[a-z][a-z0-9-]{1,30}$ ]]; then
+  echo "invalid app id" >&2
+  exit 2
+fi
+
+app_config="/etc/container-apps/${app_id}.conf"
+if [[ ! -f "$app_config" || -L "$app_config" || "$(stat -c '%U:%G:%a' "$app_config")" != "root:root:600" ]]; then
+  echo "app backup config is missing or insecure" >&2
+  exit 2
+fi
+# These values are root-owned configuration, never supplied by a workflow.
+source "$app_config"
+if [[ "${DB_CONTAINER:-}" != local-ai-stack-postgres-1 || "${DB_NAME:-}" != "$app_id" || "${DB_USER:-}" != "${app_id}_app" || "${ENV_FILE:-}" != "/etc/container-apps/${app_id}.env" || "${BACKUP_DIR:-}" != "/home/silverman/compartido_mac/backups/${app_id}" ]]; then
+  echo "invalid backup configuration" >&2
+  exit 2
+fi
+if [[ ! -f "$ENV_FILE" || -L "$ENV_FILE" || "$(stat -c '%U:%G:%a' "$ENV_FILE")" != "root:root:600" ]]; then
+  echo "app environment file is missing or insecure" >&2
+  exit 2
+fi
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+if [[ ! "${BOXIO_DB_PASSWORD:-}" =~ ^[0-9a-f]{64}$ ]]; then
+  echo "invalid database secret" >&2
+  exit 2
+fi
+
+install -d -o root -g root -m 0700 "$BACKUP_DIR"
+timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+backup_path="${BACKUP_DIR}/${app_id}-${timestamp}.dump"
+temporary_path="${backup_path}.partial"
+trap 'rm -f "$temporary_path"' EXIT
+
+docker exec --env PGPASSWORD="$BOXIO_DB_PASSWORD" "$DB_CONTAINER" \
+  pg_dump --host=127.0.0.1 --username="$DB_USER" --dbname="$DB_NAME" \
+    --format=custom --no-owner --no-acl > "$temporary_path"
+test -s "$temporary_path"
+chmod 0600 "$temporary_path"
+mv "$temporary_path" "$backup_path"
+find "$BACKUP_DIR" -maxdepth 1 -type f -name "${app_id}-*.dump" -mtime +30 -delete
+echo "Database backup created: ${backup_path}"

@@ -1,0 +1,57 @@
+name: Build and deploy containers
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: boxio-container-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Build bootstrap images
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --file ops/bootstrap/web/Dockerfile --tag "ghcr.io/silverberdi/boxio-web:${IMAGE_TAG}" .
+          docker build --file ops/bootstrap/api/Dockerfile --tag "ghcr.io/silverberdi/boxio-api:${IMAGE_TAG}" .
+
+      - name: Publish images for main branch
+        if: github.event_name == 'push'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push "ghcr.io/silverberdi/boxio-web:${IMAGE_TAG}"
+          docker push "ghcr.io/silverberdi/boxio-api:${IMAGE_TAG}"
+          docker logout ghcr.io
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: [self-hosted, linux, x64, boxio-deploy]
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Deploy the immutable images
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          printf '%s\n' "$GHCR_TOKEN" | sudo /usr/local/sbin/deploy-container-app boxio "$IMAGE_TAG"

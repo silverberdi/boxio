@@ -1,0 +1,52 @@
+services:
+  web:
+    image: ghcr.io/silverberdi/boxio-web:${BOXIO_IMAGE_TAG:?BOXIO_IMAGE_TAG must be set}
+    restart: unless-stopped
+    ports:
+      - "${BOXIO_BIND_ADDRESS:-127.0.0.1}:8097:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - app
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  api:
+    image: ghcr.io/silverberdi/boxio-api:${BOXIO_IMAGE_TAG:?BOXIO_IMAGE_TAG must be set}
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgresql://boxio_app:${BOXIO_DB_PASSWORD:?BOXIO_DB_PASSWORD must be set}@boxio-postgres:5432/boxio
+    networks:
+      - app
+      - database
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+networks:
+  app:
+    internal: true
+  database:
+    external: true
+    name: boxio-db
