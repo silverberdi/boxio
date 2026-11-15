@@ -39,45 +39,46 @@ La decisión de publicar/desplegar se toma separadamente; tener tests verdes no 
 
 **Salida:** juego completo local, usable en móvil, independiente de conexión una vez preparado.
 
-### D3 / [Issue #4](https://github.com/silverberdi/boxio/issues/4) — Máquina
-- Tres niveles de oponente tradicional y configuración de uno a tres bots.
-- Misma lógica pura; escenarios de bonus y secuencias.
-- Reproducibilidad en tests.
+### D3 / [Issue #4](https://github.com/silverberdi/boxio/issues/4) — PWA local offline
+- Manifest, iconos, service worker y recursos locales para jugar offline.
+- Actualización sin interrumpir una partida activa.
+- Objetivos MVP: Chrome Android y Safari iPhone; Chromium escritorio como comprobación adicional.
 
-**Salida:** máquina jugable en distintas dimensiones.
+**Salida:** PWA instalable cuando el navegador lo permita y modalidad local utilizable offline tras cargar recursos.
 
-### D4 / [Issue #5](https://github.com/silverberdi/boxio/issues/5) — Siluetas
-- Incorporar máscaras de cuadrados parametrizadas y catálogo pequeño razonable.
+### D4 / [Issue #5](https://github.com/silverberdi/boxio/issues/5) — Oponentes automáticos
+- Tres niveles tradicionales para uno a tres bots junto al humano.
+- Misma lógica pura; escenarios de bonus, capturas y cadenas.
+- Semillas reproducibles y menos de 100 ms por decisión en tablero 8×8.
+
+**Salida:** máquina jugable en distintas dimensiones y siluetas admitidas.
+
+### D5 / [Issue #6](https://github.com/silverberdi/boxio/issues/6) — Siluetas
+- Incorporar máscaras de celdas cuadradas para cruz, corazón y estrella simple, cada una pequeña/mediana/grande.
 - Asegurar que ningún cambio del motor es específico de silueta.
-- Si una figura complica excesivamente, diferir sin impedir publicación MVP.
+- No incluir la T, editor libre, triángulos, hexágonos ni tamaño muy grande en MVP.
 
-**Salida:** al menos una silueta especial validada; catálogo final según decisión OPEN-02.
+**Salida:** las tres siluetas aprobadas funcionan con las cuatro modalidades.
 
-### D5 / [Issue #6](https://github.com/silverberdi/boxio/issues/6) — Backend de sesiones y privado online
-- Identidad temporal segura, invitaciones, ocupación y registro de movimientos servidor.
-- PostgreSQL necesario, WebSockets, recuperación/reconexión de 60s.
-- Ingresos tardíos y resultado privado, según OPEN-03..06/10/12/16.
+### D6 / [Issue #7](https://github.com/silverberdi/boxio/issues/7) — Salas privadas online
+- Identidad temporal segura, invitaciones, ocupación, ingreso tardío y registro de movimientos en servidor.
+- PostgreSQL, WebSockets y recuperación/reconexión de 60 s según DEC-27/28.
+- No incluir transición sala privada ↔ máquina hasta resolver OPEN-03.
 
-**Salida:** partida privada hasta 4, pruebas de concurrencia y reconexión.
+**Salida:** partida privada hasta 4, pruebas de concurrencia, recuperación y reglas de abandono.
 
-### D6 / [Issue #7](https://github.com/silverberdi/boxio/issues/7) — Público 1v1
-- Emparejamiento automático, cancelación, inicio con dos y derrota por abandono a los 60s.
-- Tests de colas, cancelación, concurrencia y desconexión.
+### D7 / [Issue #8](https://github.com/silverberdi/boxio/issues/8) — Público 1v1
+- Emparejamiento automático, cancelación y resolución atómica de carreras según DEC-29.
+- Tras 60 s sin rival, ofrecer jugar contra la máquina en una partida separada.
+- Desconexión durante partida: 60 s y derrota por abandono según DEC-10.
 
 **Salida:** partidas públicas sin reemplazo de participantes.
-
-### D7 / [Issue #8](https://github.com/silverberdi/boxio/issues/8) — Calidad, identidad y cierre MVP
-- Pulido de animaciones/celebraciones, experiencia responsiva real, ayuda y resultados.
-- Ensayos integrados de cuatro modalidades, accesibilidad, recursos offline, recuperación básica, pruebas PWA.
-- Revisión de alcance, de defectos, de rendimiento, de publicación web; entrega solo tras aprobación.
-
-**Salida:** candidato MVP que cumple PRD-01..12 dentro del catálogo acordado.
 
 Este orden es una **estrategia inicial**, no sustituto de planificación basada en el estado del repositorio y la capacidad real del ejecutor. La experiencia agradable es requisito del MVP aunque su pulido final esté en D7: no entregar UI tosca por principio.
 
 ### D8 / [Issue #9](https://github.com/silverberdi/boxio/issues/9) — Pulido integral y QA del MVP
 
-Separa el cierre transversal en un issue propio con assets, pruebas E2E, accesibilidad y verificación PWA; corresponde al item #9. No requiere generar medios externos.
+Cierre transversal con assets existentes, pruebas automatizadas E2E, accesibilidad, rendimiento y verificación PWA; corresponde al Issue #9. La validación física y la medición de campo requieren despliegue y quedan como evidencia posterior, no como algo que mini me pueda afirmar antes de que ocurra.
 
 ## 4. Plantilla de issue (contrato de contenido, no archivo requerido)
 
