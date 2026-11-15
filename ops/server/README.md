@@ -5,7 +5,7 @@ This is deployment infrastructure only. The web page and API are temporary healt
 ## Shared application hosting pattern
 
 - Build immutable `ghcr.io/silverberdi/<app>-web` and `<app>-api` images from a Git commit SHA.
-- Run each app as its own Compose project under `/opt/apps/<app>` with a private app network.
+- Run each app as its own Compose project under `/opt/apps/<app>` with a private app network and a separate ingress network for its web frontend.
 - Give each app a dedicated PostgreSQL database, login role, and private Docker network to the shared PostgreSQL service. Do not attach app containers to `local-ai-stack_backend`.
 - Keep app secrets in root-owned `/etc/container-apps/<app>.env`; keep deployment registration in a root-owned mode-0600 config.
 - Use a repository-scoped GitHub Actions runner per app. Build on GitHub-hosted runners; only a push to `main` can call the root-owned deployment wrapper. The runner receives no general Docker-socket access.
@@ -14,7 +14,7 @@ This is deployment infrastructure only. The web page and API are temporary healt
 
 ## Boxio bootstrap
 
-`compose.yaml` is installed at `/opt/apps/boxio/compose.yaml`. The host-only environment file is `/etc/container-apps/boxio.env`. The web shell listens on the configured LAN address at port 8097; the API and PostgreSQL have no published host ports.
+`compose.yaml` is installed at `/opt/apps/boxio/compose.yaml`. The host-only environment file is `/etc/container-apps/boxio.env`. The web shell listens on the configured LAN address at port 8097; it alone joins the ingress network. The API has no published host port and joins only the private app and database networks. PostgreSQL has no Boxio-specific published port.
 
 The PostgreSQL database is named `boxio`, owned by `boxio_app`, and reached on the dedicated `boxio-db` network. No other application container joins that network.
 
