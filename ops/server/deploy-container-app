@@ -14,12 +14,8 @@ if [[ ! "$image_tag" =~ ^[0-9a-f]{40}$ ]]; then
 fi
 
 app_config="/etc/container-apps/${app_id}.conf"
-if [[ ! -f "$app_config" || -L "$app_config" ]]; then
-  echo "app is not registered for deployment" >&2
-  exit 2
-fi
-if [[ "$(stat -c '%U:%G:%a' "$app_config")" != "root:root:600" ]]; then
-  echo "app deployment config must be root-owned mode 0600" >&2
+if [[ ! -f "$app_config" || -L "$app_config" || "$(stat -c '%U:%G:%a' "$app_config")" != "root:root:600" ]]; then
+  echo "app is not registered for deployment or its config is insecure" >&2
   exit 2
 fi
 
@@ -29,18 +25,31 @@ if [[ "${COMPOSE_FILE:-}" != "/opt/apps/${app_id}/compose.yaml" || "${ENV_FILE:-
   echo "invalid deployment paths for app" >&2
   exit 2
 fi
+if [[ ! "${REPOSITORY:-}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ || ! "${COMPOSE_SOURCE_PATH:-}" =~ ^ops/server/[A-Za-z0-9_.-]+\.yaml$ ]]; then
+  echo "invalid Compose source configuration" >&2
+  exit 2
+fi
 if [[ ! -f "$COMPOSE_FILE" || -L "$COMPOSE_FILE" || ! -f "$ENV_FILE" || -L "$ENV_FILE" ]]; then
   echo "deployment files are missing or symlinked" >&2
+  exit 2
+fi
+if [[ "$(stat -c '%U:%G:%a' "$ENV_FILE")" != "root:root:600" ]]; then
+  echo "app environment file must be root-owned mode 0600" >&2
   exit 2
 fi
 
 state_dir="/var/lib/container-apps/${app_id}"
 state_file="${state_dir}/last-good-image-tag"
+state_compose="${state_dir}/last-good-compose.yaml"
 install -d -o root -g root -m 0700 "$state_dir"
 previous_tag=""
 if [[ -f "$state_file" ]]; then
   read -r previous_tag < "$state_file"
   [[ "$previous_tag" =~ ^[0-9a-f]{40}$ ]] || previous_tag=""
+fi
+if [[ -n "$previous_tag" && ! -f "$state_compose" ]]; then
+  echo "last-known-good Compose file is missing; refusing deployment" >&2
+  exit 1
 fi
 
 read -r registry_token
@@ -48,15 +57,34 @@ if [[ -z "$registry_token" ]]; then
   echo "registry token is required" >&2
   exit 2
 fi
+trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -f "${candidate_compose:-}"' EXIT
+
+candidate_compose="${state_dir}/compose-${image_tag}.yaml"
+curl --fail --silent --show-error --location --retry 3 \
+  --config <(printf 'header = "Authorization: Bearer %s"\n' "$registry_token") \
+  --header 'Accept: application/vnd.github.raw+json' \
+  "https://api.github.com/repos/${REPOSITORY}/contents/${COMPOSE_SOURCE_PATH}?ref=${image_tag}" \
+  --output "$candidate_compose"
+chmod 0600 "$candidate_compose"
+
+compose=(docker compose --project-name "$app_id" --env-file "$ENV_FILE")
+export BOXIO_IMAGE_TAG="$image_tag"
+if ! "${compose[@]}" --file "$candidate_compose" config --quiet; then
+  echo "Compose from ${image_tag} is invalid; leaving the current deployment untouched" >&2
+  exit 1
+fi
+
 printf '%s' "$registry_token" | docker login ghcr.io --username silverberdi --password-stdin >/dev/null
 unset registry_token
-trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
-
+install -o root -g root -m 0644 "$candidate_compose" "${COMPOSE_FILE}.new"
+mv -f "${COMPOSE_FILE}.new" "$COMPOSE_FILE"
 compose=(docker compose --project-name "$app_id" --env-file "$ENV_FILE" --file "$COMPOSE_FILE")
-export BOXIO_IMAGE_TAG="$image_tag"
+
 if ! "${compose[@]}" pull || ! "${compose[@]}" up --detach --remove-orphans --wait --wait-timeout 90; then
   if [[ -n "$previous_tag" ]]; then
-    echo "deployment failed; restoring last healthy image" >&2
+    echo "deployment failed; restoring the last healthy image and Compose file" >&2
+    install -o root -g root -m 0644 "$state_compose" "${COMPOSE_FILE}.rollback"
+    mv -f "${COMPOSE_FILE}.rollback" "$COMPOSE_FILE"
     export BOXIO_IMAGE_TAG="$previous_tag"
     "${compose[@]}" pull || true
     "${compose[@]}" up --detach --remove-orphans --wait --wait-timeout 90 || true
@@ -66,6 +94,8 @@ if ! "${compose[@]}" pull || ! "${compose[@]}" up --detach --remove-orphans --wa
   exit 1
 fi
 
+install -o root -g root -m 0600 "$COMPOSE_FILE" "$state_compose.new"
+mv -f "${state_compose}.new" "$state_compose"
 printf '%s\n' "$image_tag" > "${state_file}.tmp"
 chmod 0600 "${state_file}.tmp"
 mv -f "${state_file}.tmp" "$state_file"
