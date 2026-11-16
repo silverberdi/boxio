@@ -12,7 +12,7 @@
 - **Jugador:** identidad de participación, apodo, color, orden de turno, puntos y estado de conexión.
 - **Estado de partida:** tablero canónico, aristas tomadas, propietarios de celdas, participantes, turno, estado terminal y secuencia/versionado de acciones.
 
-La geometría/mascara del tablero no altera la regla básica de cierre. Los cuadrados aislados o figuras disconexas son una decisión de validez de plantillas por precisar; no inventar siluetas arbitrarias.
+La geometría/máscara del tablero no altera la regla básica de cierre. Las máscaras MVP deben ser conexas y estar formadas por celdas cuadradas; validar su topología antes de activarlas.
 
 ## 2. Invariantes (GAME-01 a GAME-10)
 
@@ -78,27 +78,33 @@ Para cualquier estado legal, puntos acumulados = cantidad de cuadrados asignados
 
 **PRIV-06** No hay temporizador obligatorio para esperar invitados antes de comenzar.
 
-**PRIV-07** Si solo está el anfitrión, puede continuar esperando, elegir partida contra máquina o salir. **Por precisar:** si el flujo contra máquina reutiliza sala/sesión online o crea una partida nueva; no asumir que humanos podrán sustituir bots.
+**PRIV-07** Si solo está el anfitrión, puede continuar esperando o salir y empezar una partida nueva contra la máquina. La nueva partida no reutiliza ni transforma la sala privada; no transfiere su estado. Si sale el último participante, se cierra la sala (DEC-34).
 
 ## 6. Desconexión, abandono y reconexión
 
 **CONN-01** Cuando un participante online pierde conexión, se reserva su puesto por **60 segundos** para intentar reconectar a la misma identidad de participación.
 
-**CONN-02** La reconexión oportuna conserva sus cuadros, puntuación y participación. Proteger contra entrada por otra persona mediante código público o apodo solamente.
+**CONN-02** La reconexión oportuna conserva sus cuadros, puntuación y participación. Requiere credencial privada distinta al código/link de invitación; este no autentica. La credencial solo recupera la identidad desde el mismo dispositivo, rota tras reconexión y deja de ser válida al vencer la reserva. No incluir secretos en URL ni logs.
 
-**CONN-03 (privado)** Al vencer 60 segundos sin regresar, el cupo se libera. Otra persona puede ocupar un cupo libre; entra con **cero puntos**, sin heredar identidad ni puntuación del ausente. Las celdas ya conquistadas siguen asignadas históricamente al anterior jugador; el tablero no se resetea.
+**CONN-03 (privado)** Al vencer 60 segundos sin regresar, se pasa el turno pendiente y el cupo se libera. Otra persona puede ocupar un cupo libre; entra con **cero puntos**, sin heredar identidad ni puntuación del ausente. Las celdas ya conquistadas siguen asignadas históricamente al anterior jugador; el tablero no se resetea. El participante retirado sigue contando en el resultado final y puede ganar por sus cuadros históricos. Si regresa tras vencer la reserva, entra como participante nuevo solo si hay cupo.
 
-**CONN-04 (privado)** El reemplazo no altera el turno en curso ni una cadena de turnos extra; se suma a la rotación una vez terminada.
+**CONN-04 (privado)** El ingreso de reemplazo no altera el turno en curso ni una cadena de turnos extra; se suma a la rotación una vez terminada. Si el anfitrión se desconecta o abandona, la sala continúa para los demás; no hay transferencia de anfitrión que altere la partida.
 
 **CONN-05 (público)** Al vencer 60 segundos sin reconexión, la partida finaliza por **abandono** y el rival presente gana por abandono. Esta causal no equivale a victoria normal por cantidad de cuadros.
 
 **CONN-06** En público no se admite reemplazo ni un tercer participante.
 
-**CONN-07 (por precisar)** Comportamiento del turno y avance de juego mientras un jugador está desconectado en privado, cuándo se considera el inicio del plazo, tratamiento del anfitrión desconectado, abandono voluntario, salas sin humanos y conservación visible de puntuaciones de participantes retirados. Estos casos NO deben resolverse mediante heurísticas silenciosas en la implementación.
+**CONN-07** En privado, la reserva comienza cuando el servidor detecta la desconexión; al vencer, se pasa el turno pendiente, incluso si era turno extra. La sala continúa si queda alguien conectado y se cierra cuando no queda ningún participante. Los puntos/cuadros históricos del retirado permanecen visibles y cuentan para el resultado final.
+
+**CONN-08** Después de reiniciar el backend, restaurar cada sesión desde el último movimiento confirmado en PostgreSQL. No se promete SLA de disponibilidad para el MVP. Borrar sesiones terminadas tras 24 horas.
+
+**CONN-09 (público)** Si la búsqueda pública lleva 60 segundos sin rival, ofrecer jugar contra la máquina en una partida nueva, seguir buscando o cancelar. Elegir máquina cancela la búsqueda y no coloca el bot en la cola pública.
+
+**CONN-10 (público)** Cancelación y emparejamiento son una transición atómica según el orden de confirmación del servidor. Si confirma la cancelación primero, la búsqueda no puede emparejarse después; si confirma el match primero, se muestra la partida encontrada y ya no se cancela esa búsqueda.
 
 ## 7. Estados mínimos de sesión
 
-Propuesta de estados conceptuales para concretar luego en specs: sala en espera, preparando/iniciando, partida activa, jugador temporalmente desconectado (atributo de participación), partida terminada normal, terminada por abandono (público), cancelada. Definir explícitamente quién puede disparar cada transición y qué ocurre en reintentos/duplicados.
+Estados conceptuales para concretar luego en specs: sala en espera, preparando/iniciando, partida activa, jugador temporalmente desconectado (atributo de participación), partida terminada normal, terminada por abandono (público), cancelada. Definir explícitamente quién puede disparar cada transición y qué ocurre en reintentos/duplicados.
 
 ## 8. Idempotencia y justicia online
 

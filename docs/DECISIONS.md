@@ -1,6 +1,6 @@
 # BOXIO — Registro de decisiones, incertidumbres y procedencia
 
-**Objetivo:** impedir que mini me convierta sugerencias del asistente en compromisos del propietario. Estado al 14 de noviembre de 2026, derivado de una conversación cuyo antecedente temporal no se recuperó completo. En caso de discrepancia, pedir aclaración puntual; no reinterpretar silenciosamente.
+**Objetivo:** impedir que mini me convierta sugerencias del asistente en compromisos del propietario. Baseline inicial al 14 de noviembre de 2026; decisiones adicionales confirmadas por el propietario el 15 de noviembre de 2026. En caso de discrepancia, pedir aclaración puntual; no reinterpretar silenciosamente.
 
 ## 1. Confirmadas
 
@@ -27,39 +27,52 @@
 | DEC-19 | Arquitectura agnóstica del hosting; Capacitor en evolución a tiendas sin rehacer frontend | Aceptada |
 | DEC-20 | mini me desarrollará con OpenSpec y backlog GitHub por entregables, no una ejecución monolítica | Confirmada |
 | DEC-21 | No implementar ni desplegar mientras seguimos definiendo; evitar MVP eterno | Confirmada |
+| DEC-22 | Tablero clásico: de 2 a 8 filas y de 2 a 8 columnas, enteras; máximo 64 celdas | Confirmada por el propietario, 2026-11-15 |
+| DEC-23 | Móvil vertical como referencia: 360×640 CSS px; controles táctiles ≥44×44 CSS px. Tablet 768×1024 y escritorio 1280×800 son comprobaciones adicionales | Confirmada por el propietario, 2026-11-15 |
+| DEC-24 | PWA MVP objetivo: Chrome Android y Safari iPhone; Chromium de escritorio adicional. Offline local tras cargar/instalar; sin promesa de recuperar partida local tras cerrar el navegador. Tiendas quedan para iteración posterior | Confirmada por el propietario, 2026-11-15 |
+| DEC-25 | Bots: fácil captura inmediata en 20 % de ocasiones disponibles; medio captura y evita regalos cuando exista alternativa; difícil considera cadenas; semilla reproducible y <100 ms por decisión hasta tablero 8×8 | Confirmada por el propietario, 2026-11-15 |
+| DEC-26 | Siluetas MVP: cruz, corazón y estrella simple, cada una con tamaños pequeño/mediano/grande; todas son conjuntos de celdas cuadradas. Sin T, triángulos, hexágonos, editor ni tamaño muy grande | Confirmada por el propietario, 2026-11-15 |
+| DEC-27 | Sala privada: tras desconexión, reserva 60 s; al vencer, liberar el puesto y pasar el turno pendiente, conservar puntos/cuadros y elegibilidad del participante retirado; reemplazo es participante nuevo con cero. Reconexión solo con credencial privada del mismo dispositivo; rotarla al reconectar y no aceptarla tras vencer. El código de invitación no autentica. Si el anfitrión se va, la sala continúa; cerrar si no queda nadie | Confirmada por el propietario, 2026-11-15 |
+| DEC-28 | Recuperación online: tras reinicio, restaurar salas desde el último movimiento confirmado en PostgreSQL; sin SLA prometido para MVP; borrar salas terminadas a las 24 h | Confirmada por el propietario, 2026-11-15 |
+| DEC-29 | Público 1v1: tras 60 s sin rival, ofrecer máquina, seguir buscando o cancelar; elegir máquina crea una partida separada. Carrera cancelación/emparejamiento se resuelve por la primera confirmación del servidor | Confirmada por el propietario, 2026-11-15 |
+| DEC-30 | QA MVP: automatizar las cuatro modalidades y candidato en varios tamaños. Pruebas manuales en dispositivos reales después del despliegue. Objetivos móviles de campo en p75: LCP ≤2,5 s, INP ≤200 ms, CLS ≤0,1; predespliegue no se afirma como dato de usuarios | Confirmada por el propietario, 2026-11-15 |
+| DEC-31 | Sin revancha automática en MVP; mostrar resultado y volver al inicio. Una partida nueva crea sala y estado nuevos | Confirmada por el propietario, 2026-11-15 |
+| DEC-32 | Público objetivo MVP familiar desde 6 años; no se presenta como clasificación legal/de tienda. Sin cuentas, chat, mensajes privados, anuncios, seguimiento publicitario, solicitud de edad ni datos personales; apodo y datos temporales necesarios para jugar | Confirmada por el propietario, 2026-11-15 |
+| DEC-33 | MVP usa los assets existentes, sin eslogan candidato ni rebranding. Revisar marca, dominios, identidad y privacidad/edad antes de apertura pública/comercial | Confirmada por el propietario, 2026-11-15 |
+| DEC-34 | Si el anfitrión está solo en el lobby privado, puede esperar o salir y empezar una partida nueva contra la máquina; no se convierte ni transfiere estado de la sala privada. Si sale el último participante, la sala se cierra | Resolución inferida a petición expresa del propietario, 2026-11-15; revisar al retomar |
 
-## 2. Propuestas condicionadas (no cerradas)
+## 2. Propuestas condicionadas y alcance diferido
 
 | ID | Asunto | Interpretación segura |
 |---|---|---|
-| COND-01 | Siluetas especiales corazón, estrella simple, cruz y T | Propuesta de catálogo pequeño, sujeta a complejidad real. No tratar las cuatro como compromiso comercial obligatorio; diferir sin bloquear MVP si conviene |
-| COND-02 | Tamaño «muy grande» en tableros especiales | Solo cuando sea jugable; no se fijó como universal |
+| COND-01 | (Cerrada) Catálogo MVP: cruz, corazón y estrella simple; ver DEC-26 | Ya no es una propuesta abierta |
+| COND-02 | (Cerrada para MVP) No habrá tamaño «muy grande»; ver DEC-26 | Podrá reconsiderarse con evidencia posterior |
 | COND-03 | «Siete pantallas» | Es estructura de vistas/estados UX, no obligación de siete rutas/implementaciones distintas |
 | COND-04 | Arquitectura interna exacta (tablas/monorepo) | Referencial hasta diseñar cambios puntuales |
 | COND-05 | Efectos específicos, partículas, haptics | Dirección estética general aprobada, detalles abiertos |
-| COND-06 | PostgreSQL para recuperar partidas online | Tecnología aceptada, modelo/retención no aprobados |
+| COND-06 | (Cerrada para MVP) PostgreSQL restaura desde último movimiento confirmado; salas terminadas se borran tras 24 h; ver DEC-28 | Aprobado por el propietario |
 
-## 3. Pendientes que bloquean sus entregas específicas
+## 3. Preguntas abiertas y estado de resolución
 
-| ID | Pregunta de producto/ingeniería | Momento de resolver |
+| ID | Pregunta de producto/ingeniería | Estado al 2026-11-15 |
 |---|---|---|
-| OPEN-01 | Límites numéricos de filas/columnas personalizadas y tamaños reales por silueta | Antes de configurar tableros/UI |
-| OPEN-02 | Conjunto final y máscaras válidas de siluetas para primera entrega | Antes de comprometer biblioteca de tableros |
-| OPEN-03 | Qué significa exactamente «pasar a máquina» desde sala privada de anfitrión solo; ¿sale de online? ¿puede volverse a unir humano? | Antes del flujo sala→máquina |
-| OPEN-04 | Política de turno y suspensión cuando jugador desconecta, incluido su turno extra | Antes de online privado |
-| OPEN-05 | Efectos de abandono voluntario, del anfitrión ausente y sala con 0–1 jugadores | Antes de online privado |
-| OPEN-06 | Elegibilidad al ganar y score visible de jugadores retirados que mantienen propiedad histórica | Antes del resultado privado |
-| OPEN-07 | Revancha según modalidad y reinicio de salas/turnos | Antes de UX de resultados |
-| OPEN-08 | Persistencia y reanudación de partida local (más allá de offline en ejecución) | Antes de storage local si se incluye |
-| OPEN-09 | Política de lobby, cancelación, fallo de matchmaking y ausencia de rivales | Antes de online público |
-| OPEN-10 | Identidad opaca, expiración de credenciales, rotación al reconectar y garantías mínimas antiabuso | Antes de identidad online |
-| OPEN-11 | Rendimiento cuantificado, carga inicial, dispositivos de referencia, accesibilidad fina | Antes de cerrar pruebas de UX |
-| OPEN-12 | SLA de sesiones, limpieza de estados PostgreSQL, recuperación tras caída backend | Antes de servidor/operación |
-| OPEN-13 | Logotipo, paleta, tipografía y activos de sonido definitivos | Antes de pulido final de identidad |
-| OPEN-14 | Versiones runtime, workspace tooling, repositorio, paquete UI, esquema de test | En primer diseño técnico OpenSpec |
-| OPEN-15 | Política de privacidad, público objetivo/edad y eventual modelo de negocio | Antes de apertura pública comercial |
-| OPEN-16 | ¿Cómo se gestionan turnos de un jugador que vence desconexión en una partida privada todavía activa? | Antes de online privado |
-| OPEN-17 | Dificultad de bot (métricas, semilla reproducible, tiempo máximo por acción) | Antes del entregable IA |
+| OPEN-01 | Límites numéricos de filas/columnas personalizadas y tamaños reales por silueta | Resuelto para MVP: DEC-22 y DEC-26 |
+| OPEN-02 | Conjunto final y máscaras válidas de siluetas para primera entrega | Resuelto para MVP: DEC-26 |
+| OPEN-03 | Qué significa «pasar a máquina» desde sala privada de anfitrión solo y si puede volver a unirse un humano | Resuelto provisionalmente por DEC-34: es una partida nueva; no se transforma ni se conserva la sala. Inferencia solicitada por el propietario; validar al retomar |
+| OPEN-04 | Política de turno y suspensión cuando jugador desconecta, incluido su turno extra | Resuelto para MVP: DEC-27 |
+| OPEN-05 | Efectos de abandono voluntario, del anfitrión ausente y sala con 0–1 jugadores | Resuelto para MVP: DEC-27 |
+| OPEN-06 | Elegibilidad y puntuación de jugadores retirados con propiedad histórica | Resuelto para MVP: DEC-27 |
+| OPEN-07 | Revancha según modalidad y reinicio de salas/turnos | Resuelto para MVP: DEC-31 |
+| OPEN-08 | Persistencia y reanudación de partida local tras cerrar navegador | Resuelto para MVP: no se promete; DEC-24 |
+| OPEN-09 | Lobby, cancelación, matchmaking y ausencia de rivales | Resuelto para MVP: DEC-29 |
+| OPEN-10 | Identidad opaca, expiración y rotación al reconectar | Resuelto para MVP: DEC-27 |
+| OPEN-11 | Rendimiento cuantificado, carga, dispositivos y accesibilidad fina | Metas móviles y referencias resueltas: DEC-23 y DEC-30; detalles de accesibilidad se verifican contra criterios del Issue #3 |
+| OPEN-12 | SLA, limpieza PostgreSQL y recuperación tras caída backend | Resuelto para MVP: DEC-28; no se promete SLA |
+| OPEN-13 | Marca y activos definitivos | Resuelto para MVP: DEC-33; revisión final queda antes de publicación comercial |
+| OPEN-14 | Versiones runtime, workspace tooling, repositorio, paquete UI y esquema de test | Abierto para el diseño técnico de Issue #1; mini me lo resolverá con compatibilidad comprobada |
+| OPEN-15 | Privacidad, público objetivo/edad y modelo de negocio | Público y límites de privacidad del MVP resueltos: DEC-32; revisión legal/comercial previa a apertura pública: DEC-33. No hay modelo de ingresos aprobado |
+| OPEN-16 | Turnos de quien vence la reserva de desconexión en sala privada | Resuelto para MVP: DEC-27 |
+| OPEN-17 | Dificultad de bot, semilla y tiempo por acción | Resuelto para MVP: DEC-25 |
 
 ## 4. Reglas para la gestión de pendientes
 

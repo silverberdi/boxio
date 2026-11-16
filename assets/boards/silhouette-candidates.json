@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "usage": "Candidate templates; silhouette approval OPEN-02 still pending",
+  "usage": "Approved small MVP source masks for cross, heart and simple star; see docs/DECISIONS.md DEC-26",
   "legend": "# = present unit square, . = missing",
   "templates": [
     {
@@ -26,17 +26,6 @@
       ]
     },
     {
-      "id": "t-small",
-      "rows": [
-        "#######",
-        "#######",
-        "...#...",
-        "...#...",
-        "...#...",
-        "...#..."
-      ]
-    },
-    {
       "id": "star-small",
       "rows": [
         "...#...",
@@ -48,6 +37,6 @@
       ]
     }
   ],
-  "status": "CANDIDATE",
-  "note": "Must verify connectivity, playable edge graph and final UX dimensions before activation."
+  "status": "APPROVED_SMALL_SOURCE_MASKS",
+  "note": "Cross, heart and simple star are the MVP set. Medium and large masks are deliverables of Issue #6, derived from these small source masks; all active cells remain unit squares. T is excluded."
 }

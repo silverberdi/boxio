@@ -1,6 +1,6 @@
 # BOXIO — Experiencia de usuario, pantallas y momentos del juego
 
-**Estado:** estructura UX acordada; no confundir con diseño visual final, mockups o especificaciones de pixel. Los ejemplos de imagen usados durante la conversación fueron conceptuales y no activos de diseño aprobados.
+**Estado:** estructura UX acordada; no confundir con diseño visual final, mockups o especificaciones de pixel. Los ejemplos de imagen usados durante la conversación fueron conceptuales y no activos de diseño aprobados. Las decisiones confirmadas el 2026-11-15 se registran en `docs/DECISIONS.md`.
 
 ## 1. Principios
 
@@ -17,13 +17,13 @@
 
 **UX-01: Inicio**
 - Marca Boxio y cuatro opciones: «Contra la máquina», «Multijugador local», «Sala privada», «Partida pública».
-- Acceso secundario a sonido/ayuda; no menús extensos, tienda ni registro.
+- Acceso secundario a sonido/ayuda; no menús extensos, tienda ni registro. Usar el wordmark y los recursos actuales del catálogo del repo para el MVP; no usar el eslogan candidato.
 - La ausencia de red no bloquea innecesariamente modo máquina/local. Una modalidad online debe explicar que necesita conectividad.
 
 **UX-02: Elección de tablero**
 - Elegir clásico rectangular o silueta predefinida.
-- Clásico: tamaños pequeño/mediano/grande + filas y columnas personalizadas con límites UX todavía por definir.
-- Siluetas: previsualización de máscara de cuadros y tamaños predefinidos, sin editor ni dimensiones personalizadas.
+- Clásico: tamaños pequeño/mediano/grande + filas y columnas enteras personalizadas entre 2 y 8.
+- Siluetas: cruz, corazón y estrella simple; previsualización de máscara de cuadrados y tamaños predefinidos pequeño/mediano/grande, sin editor ni dimensiones personalizadas. La forma de generar las máscaras mediana/grande se debe precisar en el Issue #6.
 - Vista previa inmediata, cantidad de cuadros o expectativa cualitativa de duración si es fiable; no inventar tiempos estimados sin evidencia.
 
 **UX-03: Preparación de partida**
@@ -33,11 +33,11 @@
 
 **UX-04: Sala privada**
 - Presentar código/enlace compartible, número de cupos ocupados sobre 4, participantes y estado.
-- Iniciar con dos participantes sin temporizador forzado; anfitrión solo puede esperar, elegir jugar contra máquina o abandonar.
+- Iniciar con dos participantes sin temporizador forzado. Si el anfitrión está solo, puede esperar o salir y empezar una partida nueva contra la máquina; no se convierte ni transfiere el estado de la sala (DEC-34). Si sale el último participante, la sala se cierra.
 - Tras iniciar, no bloquear incorporaciones tardías en cupos libres; mostrar su entrada de manera no interruptiva.
 
 **UX-05: Emparejamiento público**
-- Estado «buscando rival», opción cancelar, transición automática cuando haya dos jugadores.
+- Estado «buscando rival», opción cancelar y transición automática cuando haya dos jugadores. Tras 60 segundos sin rival, ofrecer jugar contra la máquina en partida separada, seguir buscando o cancelar; resolver carreras de cancelación/emparejamiento con la primera confirmación del servidor.
 - No presentar códigos de sala ni configuración de participantes de 3–4.
 
 **UX-06: Pantalla de partida**
@@ -51,7 +51,7 @@
 - En offline evitar depender de conectividad para registrar avance de la jugada.
 
 **UX-07: Resultados**
-- Ganador(es) o empate, puntos finales, efecto celebratorio y opción de revancha/volver.
+- Ganador(es) o empate, puntos finales y efecto celebratorio. En el MVP no hay revancha automática: se vuelve al inicio; una partida nueva empieza con sala y estado nuevos.
 - Si público termina por abandono, el texto identifica esa causal separada de un triunfo por puntos.
 - El comportamiento exacto de revancha online (mismos jugadores, sala nueva, emparejamiento nuevo) permanece abierto y no debe inventarse.
 
@@ -85,12 +85,13 @@ El conjunto descrito son vistas o estados funcionales; pueden implementarse reut
 
 ## 4. Diseño visual: dirección y límites
 
-Dirección aprobada: moderna, viva, amistosa y con animaciones de conquista, apropiada para familias y competición casual. **No están aprobados** paleta exacta, logotipo final, tipografías, assets, escala de animación, música, vibraciones obligatorias ni esquema final de navegación. Hacer prototipo evaluable antes de tratarlos como definitivo.
+Dirección aprobada: moderna, viva, amistosa y con animaciones de conquista, apropiada para familias y competición casual. Para el MVP, los assets existentes del repositorio (wordmark, icono, personajes, fondo, tokens y efectos WebAudio) son la identidad visual inicial y no requieren un encargo externo. El eslogan no está aprobado; la marca/identidad definitiva se revisará antes de publicación comercial. La escala de animación, música y vibraciones obligatorias tampoco están comprometidas.
 
 La forma de tablero es una **máscara de celdas cuadradas**. Corazón, estrella, cruz o T se construyen exclusivamente con celdas cuadradas; las líneas jugables nacen de su perímetro real. Las zonas vacías fuera de la máscara no son regiones y no puntúan.
 
 ## 5. Diseño responsivo y táctil
 
+- Referencia móvil obligatoria: 360×640 CSS px en vertical; tablet 768×1024 y escritorio 1280×800 son comprobaciones adicionales. Controles táctiles con área mínima de 44×44 CSS px.
 - Asegurar separación/precisión suficiente de aristas en pantallas pequeñas. Para tableros grandes debe existir zoom/pan.
 - Evitar toques accidentales durante desplazamiento y zoom; no cambiar aristas si el gesto ha sido interpretado como navegación.
 - Los marcadores nunca deberían desaparecer completamente por zoom.
@@ -112,4 +113,4 @@ La forma de tablero es una **máscara de celdas cuadradas**. Corazón, estrella,
 
 ## 7. Abiertos para diseño iterativo
 
-Paleta, tipografía, logotipo, duración/detalles de efectos y sonidos, tamaños exactos de componentes, umbrales de zoom, reglas de cambio de orientación, número objetivo de pasos para iniciar, solución exacta de accesibilidad para aristas densas. Deben optimizarse con prototipos y pruebas, sin bloquear el arranque del motor de reglas.
+Tamaños exactos de componentes, umbrales de zoom, reglas de cambio de orientación, número objetivo de pasos para iniciar y solución exacta de accesibilidad para aristas densas. Deben optimizarse con prototipos y pruebas, sin bloquear el arranque del motor de reglas. Las validaciones físicas se realizarán con el candidato desplegado; Mini Me no debe reportarlas como ejecutadas antes de ese momento.
