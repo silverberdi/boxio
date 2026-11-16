@@ -63,7 +63,7 @@ La decisión de publicar/desplegar se toma separadamente; tener tests verdes no 
 ### D6 / [Issue #7](https://github.com/silverberdi/boxio/issues/7) — Salas privadas online
 - Identidad temporal segura, invitaciones, ocupación, ingreso tardío y registro de movimientos en servidor.
 - PostgreSQL, WebSockets y recuperación/reconexión de 60 s según DEC-27/28.
-- No incluir transición sala privada ↔ máquina hasta resolver OPEN-03.
+- Si el anfitrión está solo, puede esperar o salir y empezar una partida nueva contra la máquina; no convertir ni transferir estado de la sala (DEC-34).
 
 **Salida:** partida privada hasta 4, pruebas de concurrencia, recuperación y reglas de abandono.
 
@@ -109,7 +109,7 @@ Las pruebas deben corresponder a contratos reales, no perseguir conteos de tests
 
 ## 7. Segunda iteración (backlog aparte)
 
-Cuentas opcionales, perfiles, historial persistente de cuenta, eventual Android/iOS con Capacitor, ampliación social/multijugador y mejoras basadas en feedback. No convertir estos ítems en dependencias de D0–D7.
+Cuentas opcionales, perfiles, historial persistente de cuenta, eventual Android/iOS con Capacitor, ampliación social/multijugador y mejoras basadas en feedback. No convertir estos ítems en dependencias de D0–D8.
 
 ## 8. No incluir sin autorización
 

@@ -62,7 +62,7 @@ Los tres niveles son reproducibles con semilla y deben decidir en menos de 100 m
 De 2 a 4 personas juegan por turnos en un mismo dispositivo. Es accesible offline tras disponer de los recursos requeridos. La interfaz muestra con claridad quién debe jugar.
 
 ### 5.3 Sala privada online
-Hasta 4 participantes, con acceso por enlace o código. No se obliga a completar todos los cupos ni a esperar un temporizador de arranque. Dos jugadores pueden iniciar; posteriormente pueden ingresar otros hasta llenar cupos. Los entrantes parten de cero y no alteran regiones previas. El anfitrión sin acompañantes puede esperar, iniciar contra máquina o salir. Ver reglas de ocupación, turnos y abandono en GAMEPLAY.
+Hasta 4 participantes, con acceso por enlace o código. No se obliga a completar todos los cupos ni a esperar un temporizador de arranque. Dos jugadores pueden iniciar; posteriormente pueden ingresar otros hasta llenar cupos. Los entrantes parten de cero y no alteran regiones previas. El anfitrión sin acompañantes puede esperar o salir y empezar una partida nueva contra la máquina; la sala privada no se convierte ni transfiere estado. Si sale el último participante, se cierra la sala (DEC-34). Ver reglas de ocupación, turnos y abandono en GAMEPLAY.
 
 ### 5.4 Pública online
 Partidas competitivas fijas de dos participantes, emparejamiento automático sin código ni invitación. Comienzan cuando ambos están conectados. No se incorpora un tercero ni se sustituye al ausente. Si un jugador supera 60 segundos desconectado, pierde por abandono. No confundir con las salas privadas.

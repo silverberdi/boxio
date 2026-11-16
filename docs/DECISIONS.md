@@ -39,6 +39,7 @@
 | DEC-31 | Sin revancha automática en MVP; mostrar resultado y volver al inicio. Una partida nueva crea sala y estado nuevos | Confirmada por el propietario, 2026-11-15 |
 | DEC-32 | Público objetivo MVP familiar desde 6 años; no se presenta como clasificación legal/de tienda. Sin cuentas, chat, mensajes privados, anuncios, seguimiento publicitario, solicitud de edad ni datos personales; apodo y datos temporales necesarios para jugar | Confirmada por el propietario, 2026-11-15 |
 | DEC-33 | MVP usa los assets existentes, sin eslogan candidato ni rebranding. Revisar marca, dominios, identidad y privacidad/edad antes de apertura pública/comercial | Confirmada por el propietario, 2026-11-15 |
+| DEC-34 | Si el anfitrión está solo en el lobby privado, puede esperar o salir y empezar una partida nueva contra la máquina; no se convierte ni transfiere estado de la sala privada. Si sale el último participante, la sala se cierra | Resolución inferida a petición expresa del propietario, 2026-11-15; revisar al retomar |
 
 ## 2. Propuestas condicionadas y alcance diferido
 
@@ -57,7 +58,7 @@
 |---|---|---|
 | OPEN-01 | Límites numéricos de filas/columnas personalizadas y tamaños reales por silueta | Resuelto para MVP: DEC-22 y DEC-26 |
 | OPEN-02 | Conjunto final y máscaras válidas de siluetas para primera entrega | Resuelto para MVP: DEC-26 |
-| OPEN-03 | Qué significa «pasar a máquina» desde sala privada de anfitrión solo y si puede volver a unirse un humano | Sigue abierto; debe quedar fuera del Issue #7 salvo decisión específica |
+| OPEN-03 | Qué significa «pasar a máquina» desde sala privada de anfitrión solo y si puede volver a unirse un humano | Resuelto provisionalmente por DEC-34: es una partida nueva; no se transforma ni se conserva la sala. Inferencia solicitada por el propietario; validar al retomar |
 | OPEN-04 | Política de turno y suspensión cuando jugador desconecta, incluido su turno extra | Resuelto para MVP: DEC-27 |
 | OPEN-05 | Efectos de abandono voluntario, del anfitrión ausente y sala con 0–1 jugadores | Resuelto para MVP: DEC-27 |
 | OPEN-06 | Elegibilidad y puntuación de jugadores retirados con propiedad histórica | Resuelto para MVP: DEC-27 |
