@@ -47,22 +47,104 @@ import { UpdateCoordinator } from "./update-coordinator";
     <p class="scope-note">Las modalidades bloqueadas se habilitarán en próximas entregas.</p>
   </section>
   <section *ngIf="screen === 'online'" class="panel online-room">
-    <button class="back" (click)="screen = 'home'">← Inicio</button>
-    <h1>Sala privada</h1>
-    <p class="muted">La invitación localiza la sala; el servidor confirma identidad, turno y puntuación.</p>
-    <label>Tu apodo <input [value]="onlineName" (input)="onlineName = $any($event.target).value" maxlength="18" aria-label="Apodo online"></label>
-    <button class="primary" (click)="createPrivateRoom()">Crear sala</button>
-    <label>Código de invitación <input [value]="onlineInvitation" (input)="onlineInvitation = $any($event.target).value" aria-label="Código de invitación"></label>
-    <button class="primary" (click)="joinPrivateRoom()">Entrar en sala</button>
-    <p role="status">{{ onlineConnection }}</p>
-    <p *ngIf="onlineError" class="error" role="alert">{{ onlineError }}</p>
-    <div *ngIf="onlineSnapshot" class="online-state">
-      <p>Participantes: {{ onlineSnapshot.participants.length }}/4 · Estado: {{ onlineSnapshot.status }}</p>
-      <p>Versión confirmada: {{ onlineSnapshot.version }} · Turno: {{ onlineSnapshot.game?.currentPlayerId }}</p>
-      <div class="online-edges" *ngIf="onlineSnapshot.game">
-        <button *ngFor="let edge of onlineSnapshot.game.board.edges" [disabled]="onlineSnapshot.game.occupiedEdges.includes(edge.id)" (click)="onlineMove(edge.id)">{{ edge.id }}</button>
+    <button class="back" (click)="exitOnline()">← Inicio</button>
+    <h1>Salas privadas online</h1>
+    <p class="muted">Juega a distancia con amigos (2 a 4 participantes). El servidor coordina identidad, turnos y puntuación.</p>
+
+    <!-- Estado: Configuración / selección de acción si aún no hay sala -->
+    <div *ngIf="!onlineRoomId" class="online-actions-grid">
+      <!-- Tarjeta 1: Crear Sala (Anfitrión) -->
+      <div class="online-card">
+        <h2>Crear una sala</h2>
+        <p class="muted"><small>Inicia como anfitrión. El sistema generará un código para compartir.</small></p>
+        <label class="field-label">
+          <span>Tu apodo</span>
+          <input [value]="onlineName" (input)="onlineName = $any($event.target).value" maxlength="18" placeholder="Tu nombre" aria-label="Apodo anfitrión">
+        </label>
+        <div class="board-choice compact">
+          <label class="field-label">
+            <span>Filas</span>
+            <input type="number" min="2" max="6" [value]="onlineRows" (input)="onlineRows = +$any($event.target).value">
+          </label>
+          <label class="field-label">
+            <span>Columnas</span>
+            <input type="number" min="2" max="6" [value]="onlineColumns" (input)="onlineColumns = +$any($event.target).value">
+          </label>
+        </div>
+        <button class="primary" [disabled]="isConnecting" (click)="createPrivateRoom()">
+          {{ isConnecting ? 'Creando sala...' : 'Crear sala' }}
+        </button>
+      </div>
+
+      <div class="online-divider"><span>O</span></div>
+
+      <!-- Tarjeta 2: Unirse a Sala (Invitado) -->
+      <div class="online-card">
+        <h2>Unirse a una sala</h2>
+        <p class="muted"><small>Introduce el código que te compartió el creador de la sala.</small></p>
+        <label class="field-label">
+          <span>Tu apodo</span>
+          <input [value]="onlineJoinName" (input)="onlineJoinName = $any($event.target).value" maxlength="18" placeholder="Tu nombre" aria-label="Apodo participante">
+        </label>
+        <label class="field-label">
+          <span>Código de invitación</span>
+          <input [value]="onlineInvitation" (input)="onlineInvitation = $any($event.target).value.toUpperCase()" maxlength="12" placeholder="Ej: A1B2C3" aria-label="Código de invitación">
+        </label>
+        <button class="primary" [disabled]="isConnecting" (click)="joinPrivateRoom()">
+          {{ isConnecting ? 'Conectando...' : 'Entrar en sala' }}
+        </button>
       </div>
     </div>
+
+    <!-- Estado: Dentro de una sala -->
+    <div *ngIf="onlineRoomId" class="online-active-room">
+      <div class="invitation-banner">
+        <div>
+          <span class="eyebrow">Código para invitar a tus amigos</span>
+          <strong class="invitation-code">{{ onlineInvitation }}</strong>
+        </div>
+        <button class="quiet copy-btn" (click)="copyInvitationCode()">{{ copyStatus || 'Copiar código' }}</button>
+      </div>
+
+      <p *ngIf="onlineConnection" class="connection-status" role="status" [class.connected]="onlineConnection.includes('Confirmado') || onlineConnection.includes('Conectado')">
+        {{ onlineConnection }}
+      </p>
+
+      <div *ngIf="onlineSnapshot" class="online-state">
+        <div class="room-info">
+          <span>Participantes: <strong>{{ onlineSnapshot.participants.length }}/4</strong></span>
+          <span>· Estado: <strong>{{ onlineSnapshot.status === 'lobby' ? 'Esperando jugadores' : (onlineSnapshot.status === 'active' ? 'En juego' : onlineSnapshot.status) }}</strong></span>
+        </div>
+        <div class="participants-list">
+          <div *ngFor="let p of onlineSnapshot.participants" class="participant-badge" [class.current]="p.id === onlineParticipantId">
+            <span class="color-dot" [style.background]="getParticipantColor(p.id)"></span>
+            <b>{{ p.name }}</b>
+            <small *ngIf="p.host">(Anfitrión)</small>
+            <span *ngIf="p.id === onlineParticipantId" class="you-badge">(Tú)</span>
+          </div>
+        </div>
+
+        <div *ngIf="onlineSnapshot.game" class="online-board-wrapper">
+          <p class="turn-indicator">
+            Turno actual: <strong>{{ getParticipantName(onlineSnapshot.game.currentPlayerId) }}</strong>
+            <span *ngIf="isMyTurn()" class="my-turn-badge">¡Es tu turno!</span>
+          </p>
+          <div class="online-edges-grid">
+            <button *ngFor="let edge of onlineSnapshot.game.board.edges"
+              class="edge-btn"
+              [class.occupied]="onlineSnapshot.game.occupiedEdges.includes(edge.id)"
+              [disabled]="onlineSnapshot.game.occupiedEdges.includes(edge.id) || !isMyTurn()"
+              (click)="onlineMove(edge.id)">
+              {{ edge.id }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <button class="quiet leave-btn" (click)="exitOnline()">Salir de la sala</button>
+    </div>
+
+    <p *ngIf="onlineError" class="error" role="alert">{{ onlineError }}</p>
   </section>
   <section *ngIf="screen === 'setup'" class="panel setup">
     <button class="back" (click)="screen = 'home'">← Inicio</button>
@@ -205,13 +287,36 @@ import { UpdateCoordinator } from "./update-coordinator";
     .selected,.primary{background:#1e88ff!important;color:#fff!important}
     .player-form{display:grid;gap:10px}
     .player-form label{display:grid;grid-template-columns:1fr auto 1.4fr;align-items:center;gap:8px}
-    .player-form input,.player-form select,.board-choice input,.board-choice select{min-height:44px;border:2px solid #9acbe4;border-radius:10px;padding:0 10px;font:inherit;color:#082c7c;box-sizing:border-box;width:100%}
+    .player-form input,.player-form select,.board-choice input,.board-choice select,.online-card input,.online-card select,.field-label input{min-height:44px;border:2px solid #9acbe4;border-radius:10px;padding:0 10px;font:inherit;color:#082c7c;box-sizing:border-box;width:100%;background:#fff}
     .color-dot{display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #082c7c}
     .board-choice{display:flex;gap:12px;margin:14px 0}
+    .board-choice.compact{margin:6px 0}
     .board-choice label{flex:1}
-    .error{color:#a61732}
+    .error{color:#a61732;font-weight:600}
     .primary{width:100%;margin-top:10px;font-weight:700}
     .back,.quiet{border:0;padding:6px 12px;background:transparent;min-height:44px}
+    .online-actions-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:stretch;margin:18px 0}
+    @media(max-width:640px){.online-actions-grid{grid-template-columns:1fr}.online-divider{display:none}}
+    .online-card{background:#f4faff;border:2px solid #9acbe4;border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px;text-align:left}
+    .online-card h2{margin:0;font-size:20px;color:#082c7c}
+    .online-divider{display:flex;align-items:center;justify-content:center;color:#42648c;font-weight:700}
+    .field-label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600;color:#082c7c}
+    .field-label input:focus{border-color:#1e88ff;outline:none}
+    .invitation-banner{display:flex;justify-content:space-between;align-items:center;background:#e8f4fc;border:2px dashed #1e88ff;border-radius:14px;padding:12px 18px;margin:16px 0}
+    .invitation-code{font-size:24px;letter-spacing:2px;color:#082c7c;font-family:monospace}
+    .copy-btn{color:#1e88ff;font-weight:700;cursor:pointer}
+    .participants-list{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+    .participant-badge{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #9acbe4;border-radius:20px;padding:4px 12px;font-size:14px}
+    .participant-badge.current{border-color:#1e88ff;background:#eef6ff;font-weight:700}
+    .you-badge{color:#1e88ff;font-size:12px}
+    .online-edges-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:12px}
+    .edge-btn{min-height:40px;border:2px solid #9acbe4;border-radius:8px;background:#fff;color:#082c7c;font-weight:600;cursor:pointer}
+    .edge-btn.occupied{background:#c0dbee;color:#6b8aa8;border-color:#c0dbee;cursor:not-allowed}
+    .edge-btn:not([disabled]):hover{background:#1e88ff;color:#fff;border-color:#1e88ff}
+    .connection-status{font-size:13px;color:#42648c;margin:6px 0}
+    .connection-status.connected{color:#147a32;font-weight:600}
+    .my-turn-badge{background:#1e88ff;color:#fff;border-radius:6px;padding:2px 6px;font-size:12px;margin-left:6px}
+    .leave-btn{margin-top:16px;color:#a61732}
     .game-screen{display:flex;flex-direction:column;min-height:calc(100vh - 100px)}
     .game-status{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
     .eyebrow{font-size:12px;margin:0;color:#42648c}
@@ -286,15 +391,55 @@ export class AppComponent {
   private pointers = new Map<number, { x: number; y: number }>();
   private audioContext: AudioContext | null = null;
   machineMode = false;
-  onlineName = "Jugador";
+  onlineName = "Anfitrión";
+  onlineJoinName = "Invitado";
+  onlineRows = 2;
+  onlineColumns = 2;
+  isConnecting = false;
+  copyStatus = "";
   onlineInvitation = "";
   onlineRoomId = "";
   onlineParticipantId = "";
   onlineCredential = "";
   onlineSnapshot: any = null;
   onlineError = "";
-  onlineConnection = "Sin conexión";
+  onlineConnection = "";
   private onlineSocket?: WebSocket;
+
+  copyInvitationCode() {
+    if (!this.onlineInvitation) return;
+    navigator.clipboard?.writeText(this.onlineInvitation).then(() => {
+      this.copyStatus = "¡Copiado!";
+      setTimeout(() => (this.copyStatus = ""), 2500);
+    });
+  }
+
+  exitOnline() {
+    if (this.onlineSocket) {
+      try { this.onlineSocket.close(); } catch {}
+      this.onlineSocket = undefined;
+    }
+    this.onlineRoomId = "";
+    this.onlineSnapshot = null;
+    this.onlineInvitation = "";
+    this.onlineError = "";
+    this.onlineConnection = "";
+    this.screen = "home";
+  }
+
+  getParticipantColor(participantId: string): string {
+    const idx = (this.onlineSnapshot?.participants ?? []).findIndex((p: any) => p.id === participantId);
+    return idx >= 0 ? PLAYER_COLORS[idx % PLAYER_COLORS.length] : "#888";
+  }
+
+  getParticipantName(participantId: string): string {
+    const p = (this.onlineSnapshot?.participants ?? []).find((p: any) => p.id === participantId);
+    return p ? p.name : participantId;
+  }
+
+  isMyTurn(): boolean {
+    return this.onlineSnapshot?.game?.currentPlayerId === this.onlineParticipantId;
+  }
 
   connectOnlineSocket() {
     if (typeof window === "undefined" || !this.onlineRoomId) return;
@@ -302,9 +447,12 @@ export class AppComponent {
       try { this.onlineSocket.close(); } catch {}
     }
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = protocol + "//" + window.location.host + "/rooms/" + this.onlineRoomId + "/ws";
+    const url = `${protocol}//${window.location.host}/api/rooms/${this.onlineRoomId}/ws`;
     const ws = new WebSocket(url);
     this.onlineSocket = ws;
+    ws.onopen = () => {
+      this.onlineConnection = "Conectado en tiempo real";
+    };
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -316,7 +464,10 @@ export class AppComponent {
       } catch {}
     };
     ws.onclose = () => {
-      if (this.onlineSocket === ws) this.onlineSocket = undefined;
+      if (this.onlineSocket === ws) {
+        this.onlineSocket = undefined;
+        this.onlineConnection = "Desconectado del servidor";
+      }
     };
   }
 
@@ -326,7 +477,12 @@ export class AppComponent {
   dragCurrentPoint: { x: number; y: number } | null = null;
 
   chooseMode(mode: GameMode) {
-    if (mode === "private") { this.onlineError = ""; this.screen = "online"; return; }
+    if (mode === "private") {
+      this.onlineError = "";
+      this.onlineConnection = "";
+      this.screen = "online";
+      return;
+    }
     if (mode === "local" || mode === "machine") {
       this.machineMode = mode === "machine";
       this.setPlayerCount(this.machineMode ? 2 : 2);
@@ -335,17 +491,45 @@ export class AppComponent {
   }
 
   async createPrivateRoom() {
-    await this.privateRequest("/rooms", { name: this.onlineName, selection: { kind: "classic", rows: 2, columns: 2 } }, true);
+    this.isConnecting = true;
+    this.onlineError = "";
+    this.onlineConnection = "Creando sala...";
+    try {
+      await this.privateRequest("/api/rooms", {
+        name: this.onlineName.trim() || "Anfitrión",
+        selection: { kind: "classic", rows: this.onlineRows, columns: this.onlineColumns }
+      }, true);
+    } finally {
+      this.isConnecting = false;
+    }
   }
 
   async joinPrivateRoom() {
-    if (!this.onlineInvitation.trim()) { this.onlineError = "Escribe el código de invitación."; return; }
-    await this.privateRequest(`/rooms/${encodeURIComponent(this.onlineInvitation)}/join`, { name: this.onlineName, invitationCode: this.onlineInvitation }, false);
+    const code = this.onlineInvitation.trim();
+    if (!code) {
+      this.onlineError = "Escribe el código de invitación que te compartieron.";
+      return;
+    }
+    this.isConnecting = true;
+    this.onlineError = "";
+    this.onlineConnection = "Conectando con la sala...";
+    try {
+      await this.privateRequest(`/api/rooms/${encodeURIComponent(code)}/join`, {
+        name: this.onlineJoinName.trim() || "Invitado",
+        invitationCode: code
+      }, false);
+    } finally {
+      this.isConnecting = false;
+    }
   }
 
   private async privateRequest(path: string, body: unknown, creating: boolean) {
     try {
-      const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "No se pudo acceder a la sala.");
       this.onlineRoomId = payload.roomId ?? payload.snapshot?.roomId ?? this.onlineRoomId;
@@ -353,18 +537,40 @@ export class AppComponent {
       this.onlineCredential = payload.reconnectCredential;
       this.onlineSnapshot = payload.snapshot;
       this.onlineInvitation = payload.invitationCode ?? this.onlineInvitation;
-      this.onlineConnection = "Confirmado por servidor";
-      this.onlineError = creating ? "Comparte este código: " + this.onlineInvitation : "Entrada confirmada.";
+      this.onlineConnection = "Conectado al servidor";
+      this.onlineError = "";
       this.connectOnlineSocket();
-    } catch (error) { this.onlineConnection = "Rechazado"; this.onlineError = error instanceof Error ? error.message : "No se pudo acceder a la sala."; }
+    } catch (error) {
+      this.onlineConnection = "Error de conexión";
+      this.onlineError = error instanceof Error ? error.message : "No se pudo acceder a la sala.";
+    }
   }
 
   async onlineMove(edgeId: string) {
-    if (!this.onlineSnapshot) return;
-    const response = await fetch(`/rooms/${this.onlineRoomId}/commands`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ protocolVersion: 1, commandId: crypto.randomUUID(), participantId: this.onlineParticipantId, credential: this.onlineCredential, version: this.onlineSnapshot.version, edgeId }) });
-    const payload = await response.json();
-    if (response.ok) this.onlineSnapshot = payload.snapshot;
-    else this.onlineError = payload.code === "forbidden" ? "No es tu turno." : "La jugada fue rechazada por el servidor.";
+    if (!this.onlineSnapshot || !this.onlineRoomId) return;
+    try {
+      const response = await fetch(`/api/rooms/${this.onlineRoomId}/commands`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          protocolVersion: 1,
+          commandId: crypto.randomUUID(),
+          participantId: this.onlineParticipantId,
+          credential: this.onlineCredential,
+          version: this.onlineSnapshot.version,
+          edgeId
+        })
+      });
+      const payload = await response.json();
+      if (response.ok) {
+        this.onlineSnapshot = payload.snapshot;
+        this.onlineError = "";
+      } else {
+        this.onlineError = payload.code === "forbidden" ? "No es tu turno." : (payload.error ?? "La jugada fue rechazada por el servidor.");
+      }
+    } catch (err) {
+      this.onlineError = err instanceof Error ? err.message : "Error de comunicación con el servidor.";
+    }
   }
 
   setPlayerCount(count: number) {
