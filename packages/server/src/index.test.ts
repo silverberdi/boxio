@@ -20,13 +20,48 @@ test("join and lifecycle transitions are persisted before HTTP responses", async
   const host = created.json();
   const joined = await app.inject({ method: "POST", url: `/rooms/${host.roomId}/join`, payload: { name: "Guest", invitationCode: host.invitationCode } });
   assert.equal(joined.statusCode, 201);
-  assert.equal(saved.length, 2, "create and join must both be durable");
+  assert.equal(saved.length, 3, "final credential, create and join must all be durable");
 
   const guest = joined.json();
   const lifecycle = await app.inject({ method: "POST", url: `/rooms/${host.roomId}/participants/${guest.participantId}/lifecycle`, payload: { action: "disconnect" } });
   assert.equal(lifecycle.statusCode, 200);
-  assert.equal(saved.length, 3, "disconnect must be durable before the response");
+  assert.equal(saved.length, 4, "disconnect must be durable before the response");
   await app.close();
+});
+
+test("room creation persists the final host credential returned to the client", async () => {
+  const savedHashes: Array<string | undefined> = [];
+  const persistence: RoomPersistence = { save: async (room) => {
+    savedHashes.push(room.toPersistence().participants.find((participant) => participant.host)?.credentialHash);
+  } };
+  const app = buildServer(new PersistentRoomStore(persistence));
+  const response = await app.inject({ method: "POST", url: "/rooms", payload: { name: "Host", rows: 2, columns: 2 } });
+  const created = response.json();
+  const { createHash } = await import("node:crypto");
+  const returnedHash = createHash("sha256").update(created.reconnectCredential).digest("hex");
+  assert.equal(response.statusCode, 201);
+  assert.equal(savedHashes.at(-1), returnedHash);
+  assert.notEqual(savedHashes[0], returnedHash);
+  await app.close();
+});
+
+test("snapshot evaluation expires reservations in the running server", async () => {
+  const realNow = Date.now;
+  let now = realNow();
+  Date.now = () => now;
+  try {
+    const app = buildServer();
+    const created = (await app.inject({ method: "POST", url: "/rooms", payload: { name: "Host", rows: 2, columns: 2 } })).json();
+    const guest = (await app.inject({ method: "POST", url: `/rooms/${created.roomId}/join`, payload: { name: "Guest", invitationCode: created.invitationCode } })).json();
+    await app.inject({ method: "POST", url: `/rooms/${created.roomId}/participants/${guest.participantId}/lifecycle`, payload: { action: "disconnect" } });
+    now += 60_000;
+    const snapshot = await app.inject({ method: "GET", url: `/rooms/${created.roomId}/snapshot` });
+    assert.equal(snapshot.statusCode, 200);
+    assert.equal(snapshot.json().participants.find((participant: { id: string }) => participant.id === guest.participantId)?.status, "retired");
+    await app.close();
+  } finally {
+    Date.now = realNow;
+  }
 });
 
 test("persistent store loads an invitation miss from its durable adapter", async () => {
@@ -54,7 +89,7 @@ test("WebSocket reconnection is persisted before its snapshot is sent", { timeou
   const snapshot = new Promise<void>((resolve) => socket.once("message", () => resolve()));
   socket.send(JSON.stringify({ type: "reconnect", protocolVersion: 1, participantId: guest.participantId, credential: guest.reconnectCredential }));
   await snapshot;
-  assert.equal(saved.length, 4, "reconnect must be durable before the snapshot");
+  assert.equal(saved.length, 5, "reconnect must be durable before the snapshot");
   socket.terminate();
   await app.close();
 });

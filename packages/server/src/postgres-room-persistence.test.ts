@@ -17,6 +17,8 @@ test("PostgreSQL adapter persists a complete snapshot and command with parameter
   assert.equal(calls.length, 1);
   assert.match(calls[0].text, /WITH saved_room/);
   assert.match(calls[0].text, /private_room_commands/);
+  assert.match(calls[0].text, /private_room_participants/);
+  assert.equal(String(calls[0].values[7]).includes(host.participantId), true);
   assert.equal(JSON.stringify(calls).includes(host.reconnectCredential), false);
   void guest;
 });
@@ -42,6 +44,7 @@ test("migration contains capacity, uniqueness, idempotency and credential-hash c
   assert.match(sql, /private_room_capacity_trigger/);
   assert.match(sql, /ON DELETE CASCADE/);
   assert.match(sql, /pg_advisory_xact_lock/);
+  assert.match(sql, /participant_id <> NEW\.participant_id/);
   const migration = await fs.readFile(new URL("../migrations/001_private_rooms.py", import.meta.url), "utf8");
   assert.match(migration, /def downgrade\(\)/);
   assert.match(migration, /DROP TABLE IF EXISTS private_room_commands/);
@@ -54,7 +57,7 @@ test("PostgreSQL snapshot round-trip restores the last confirmed move after rest
     if (text.startsWith("SELECT snapshot")) return { rows: storedSnapshot ? [{ snapshot: storedSnapshot }] : [] };
     if (text.includes("WITH saved_room")) {
       storedSnapshot = JSON.parse(String(values[5]));
-      storedCommand = String(values[7]);
+      storedCommand = String(values[8]);
     }
     return { rows: [] };
   };

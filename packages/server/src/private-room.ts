@@ -216,13 +216,18 @@ export class PrivateRoom {
   }
 
   expireReservations(at = this.clock()): PrivateRoomSnapshot {
+    let changed = false;
     for (const participant of this.participants.values()) {
       if (participant.status === "reserved" && participant.reservationExpiresAt && at >= Date.parse(participant.reservationExpiresAt)) {
         participant.status = "retired"; participant.connected = false; delete participant.credentialHash;
         if (this.game?.currentPlayerId === participant.id) this.advanceTurnFrom(participant.id);
+        changed = true;
       }
     }
-    this.closeIfEmpty();
+    if (changed) {
+      this.closeIfEmpty();
+      this.version += 1;
+    }
     return this.snapshot();
   }
 

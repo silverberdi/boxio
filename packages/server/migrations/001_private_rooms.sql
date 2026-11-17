@@ -33,7 +33,9 @@ BEGIN
   -- Serialize occupancy checks per room so concurrent joins cannot both observe
   -- the same final free slot.
   PERFORM pg_advisory_xact_lock(hashtextextended(NEW.room_id::text, 0));
-  IF (SELECT count(*) FROM private_room_participants WHERE room_id = NEW.room_id AND status IN ('connected', 'reserved')) >= 4 THEN
+  IF (SELECT count(*) FROM private_room_participants
+      WHERE room_id = NEW.room_id AND status IN ('connected', 'reserved')
+        AND participant_id <> NEW.participant_id) >= 4 THEN
     RAISE EXCEPTION 'private room capacity exceeded' USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;

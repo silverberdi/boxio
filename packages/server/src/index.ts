@@ -19,6 +19,7 @@ export interface RoomStore {
   getByInvitation(invitationCode: string): Promise<PrivateRoom | undefined> | PrivateRoom | undefined;
   persist(room: PrivateRoom): Promise<void> | void;
   cleanup(at?: number): Promise<string[] | number> | string[] | number;
+  expireReservations(at?: number): Promise<void> | void;
 }
 
 export class PersistentRoomStore implements RoomStore {
@@ -80,6 +81,14 @@ export class PersistentRoomStore implements RoomStore {
     }
     return removed;
   }
+
+  async expireReservations(at = Date.now()): Promise<void> {
+    for (const room of this.memory.values()) {
+      const before = room.getSnapshot().version;
+      room.expireReservations(at);
+      if (room.getSnapshot().version !== before) await this.persistence?.save(room);
+    }
+  }
 }
 
 export function buildServer(store: RoomStore = new PersistentRoomStore()) {
@@ -90,6 +99,9 @@ export function buildServer(store: RoomStore = new PersistentRoomStore()) {
   const roomSockets = new Map<string, Set<WebSocket>>();
 
   const persistRoom = async (room: PrivateRoom) => { await store.persist(room); };
+  const expirationTimer = setInterval(() => { void store.expireReservations(); }, 1_000);
+  expirationTimer.unref();
+  app.addHook("onClose", async () => { clearInterval(expirationTimer); });
 
   function broadcast(roomId: string, message: PrivateMessage) {
     const sockets = roomSockets.get(roomId);
@@ -107,6 +119,7 @@ export function buildServer(store: RoomStore = new PersistentRoomStore()) {
       const board = request.body.selection ? createBoardFromSelection(request.body.selection) : createRectangularBoard(request.body.rows ?? 2, request.body.columns ?? 2);
       const room = await store.create(board, request.body.name);
       const credentials = room.hostCredentials();
+      await persistRoom(room);
       return reply.code(201).send({ roomId: room.roomId, invitationCode: room.invitationCode, ...credentials });
     } catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "invalid-room" }); }
   });
@@ -115,6 +128,9 @@ export function buildServer(store: RoomStore = new PersistentRoomStore()) {
     const room = request.body.invitationCode ? await store.getByInvitation(request.body.invitationCode) : await store.get(request.params.roomId);
     if (!room) return reply.code(404).send({ error: "room-not-found" });
     try {
+      const before = room.getSnapshot().version;
+      room.expireReservations();
+      if (room.getSnapshot().version !== before) await persistRoom(room);
       const joined = room.join(request.body.name);
       await persistRoom(room);
       broadcast(room.roomId, snapshotMessage(joined.snapshot));
@@ -126,12 +142,19 @@ export function buildServer(store: RoomStore = new PersistentRoomStore()) {
 
   app.get<{ Params: { roomId: string } }>("/rooms/:roomId/snapshot", async (request, reply) => {
     const room = await store.get(request.params.roomId);
-    return room ? room.getSnapshot() : reply.code(404).send({ error: "room-not-found" });
+    if (!room) return reply.code(404).send({ error: "room-not-found" });
+    const before = room.getSnapshot().version;
+    room.expireReservations();
+    if (room.getSnapshot().version !== before) await persistRoom(room);
+    return room.getSnapshot();
   });
 
   app.post<{ Params: { roomId: string }; Body: RoomCommand }>("/rooms/:roomId/commands", async (request, reply) => {
     const room = await store.get(request.params.roomId);
     if (!room) return reply.code(404).send({ error: "room-not-found" });
+    const before = room.getSnapshot().version;
+    room.expireReservations();
+    if (room.getSnapshot().version !== before) await persistRoom(room);
     const result = await room.submit(request.body);
     if (result.accepted) {
       broadcast(room.roomId, {
@@ -159,6 +182,9 @@ export function buildServer(store: RoomStore = new PersistentRoomStore()) {
     instance.get<{ Params: { roomId: string } }>("/rooms/:roomId/ws", { websocket: true }, async (socket, request) => {
       const room = await store.get(request.params.roomId);
       if (!room) { socket.close(1008, "room-not-found"); return; }
+      const before = room.getSnapshot().version;
+      room.expireReservations();
+      if (room.getSnapshot().version !== before) await persistRoom(room);
 
       let sockets = roomSockets.get(room.roomId);
       if (!sockets) {
