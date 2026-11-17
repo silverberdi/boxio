@@ -61,3 +61,40 @@ test("two real WebSocket clients race the same command and receive one confirmat
   await app.close();
   void guest;
 });
+
+test("four real WebSocket clients observe one ordered durable turn chain", { timeout: 5_000 }, async () => {
+  const app = buildServer();
+  await app.listen({ host: "127.0.0.1", port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address === "object");
+  const created = await app.inject({ method: "POST", url: "/rooms", payload: { name: "Host", rows: 2, columns: 2 } });
+  const host = created.json();
+  const guests = await Promise.all(["One", "Two", "Three"].map(async (name) => {
+    const response = await app.inject({ method: "POST", url: `/rooms/${host.roomId}/join`, payload: { name, invitationCode: host.invitationCode } });
+    assert.equal(response.statusCode, 201);
+    return response.json();
+  }));
+  const participants = [host, ...guests];
+  const url = `ws://127.0.0.1:${address.port}/rooms/${host.roomId}/ws`;
+  const connections = await Promise.all(participants.map(() => new Promise<{ socket: WebSocket; initial: Promise<any> }>((resolve, reject) => {
+    const socket = new WebSocket(url);
+    const initial = new Promise<any>((initialResolve) => socket.once("message", (data) => initialResolve(JSON.parse(data.toString()))));
+    socket.once("open", () => resolve({ socket, initial }));
+    socket.once("error", reject);
+  })));
+  const sockets = connections.map(({ socket }) => socket);
+  const initial = await connections[0].initial;
+  await Promise.all(connections.slice(1).map(({ initial: snapshot }) => snapshot));
+  assert.equal(initial.snapshot.participants.length, 4);
+  const firstPlayer = participants.find((participant) => participant.participantId === initial.snapshot.game.currentPlayerId)!;
+  const edge = initial.snapshot.game.board.edges[0].id;
+  const message = new Promise<any>((resolve) => sockets[0].once("message", (data) => resolve(JSON.parse(data.toString()))));
+  sockets[0].send(JSON.stringify({ type: "command", protocolVersion: 1, command: { protocolVersion: 1, commandId: "four-client-1", participantId: firstPlayer.participantId, credential: firstPlayer.reconnectCredential, version: initial.snapshot.version, edgeId: edge } }));
+  const received = await message;
+  assert.equal(received.eventSequence, 1);
+  const finalSnapshot = (await app.inject({ method: "GET", url: `/rooms/${host.roomId}/snapshot` })).json();
+  assert.equal(finalSnapshot.eventSequence, 1);
+  assert.deepEqual(finalSnapshot.game.occupiedEdges, [edge]);
+  sockets.forEach((socket) => socket.terminate());
+  await app.close();
+});

@@ -30,6 +30,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS private_room_one_host_idx ON private_room_part
 
 CREATE OR REPLACE FUNCTION enforce_private_room_capacity() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  -- Serialize occupancy checks per room so concurrent joins cannot both observe
+  -- the same final free slot.
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.room_id::text, 0));
   IF (SELECT count(*) FROM private_room_participants WHERE room_id = NEW.room_id AND status IN ('connected', 'reserved')) >= 4 THEN
     RAISE EXCEPTION 'private room capacity exceeded' USING ERRCODE = 'check_violation';
   END IF;
