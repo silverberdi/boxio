@@ -734,7 +734,7 @@ export class AppComponent {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           protocolVersion: 1,
-          commandId: crypto.randomUUID(),
+          commandId: generateUUID(),
           participantId: this.onlineParticipantId,
           credential: this.onlineCredential,
           version: this.onlineSnapshot.version,
@@ -1094,3 +1094,14 @@ export class AppComponent {
 
 function distance(a: { x: number; y: number }, b: { x: number; y: number }) { return Math.hypot(a.x - b.x, a.y - b.y); }
 function midpoint(a: { x: number; y: number }, b: { x: number; y: number }) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
