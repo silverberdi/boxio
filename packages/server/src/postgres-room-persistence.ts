@@ -53,6 +53,14 @@ export class PostgresRoomPersistence implements RoomPersistence {
     return PrivateRoom.restore(state, clock, this);
   }
 
+  async loadByInvitation(invitationCode: string, clock: () => number = Date.now): Promise<PrivateRoom | undefined> {
+    const result = await this.query("SELECT snapshot FROM private_rooms WHERE invitation_code = $1", [invitationCode]);
+    const payload = result.rows[0]?.snapshot;
+    if (!payload) return undefined;
+    const state = typeof payload === "string" ? JSON.parse(payload) as PrivateRoomPersistence : payload as unknown as PrivateRoomPersistence;
+    return PrivateRoom.restore(state, clock, this);
+  }
+
   async cleanupFinished(at: Date = new Date()): Promise<number> {
     const result = await this.query(
       "DELETE FROM private_rooms WHERE status IN ('complete', 'closed') AND finished_at IS NOT NULL AND finished_at <= ($1::timestamptz - interval '24 hours')",

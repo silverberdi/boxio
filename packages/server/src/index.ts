@@ -17,6 +17,7 @@ export interface RoomStore {
   create(board: Board, hostName: string): Promise<PrivateRoom> | PrivateRoom;
   get(roomId: string): Promise<PrivateRoom | undefined> | PrivateRoom | undefined;
   getByInvitation(invitationCode: string): Promise<PrivateRoom | undefined> | PrivateRoom | undefined;
+  persist(room: PrivateRoom): Promise<void> | void;
   cleanup(at?: number): Promise<string[] | number> | string[] | number;
 }
 
@@ -51,7 +52,18 @@ export class PersistentRoomStore implements RoomStore {
     for (const room of this.memory.values()) {
       if (room.invitationCode === invitationCode) return room;
     }
+    if (this.persistence && "loadByInvitation" in this.persistence) {
+      const loaded = await (this.persistence as PostgresRoomPersistence).loadByInvitation(invitationCode);
+      if (loaded) {
+        this.memory.set(loaded.roomId, loaded);
+        return loaded;
+      }
+    }
     return undefined;
+  }
+
+  async persist(room: PrivateRoom): Promise<void> {
+    if (this.persistence) await this.persistence.save(room);
   }
 
   async cleanup(at = Date.now()): Promise<string[] | number> {
@@ -76,6 +88,8 @@ export function buildServer(store: RoomStore = new PersistentRoomStore()) {
   app.register(websocket);
 
   const roomSockets = new Map<string, Set<WebSocket>>();
+
+  const persistRoom = async (room: PrivateRoom) => { await store.persist(room); };
 
   function broadcast(roomId: string, message: PrivateMessage) {
     const sockets = roomSockets.get(roomId);
@@ -102,6 +116,7 @@ export function buildServer(store: RoomStore = new PersistentRoomStore()) {
     if (!room) return reply.code(404).send({ error: "room-not-found" });
     try {
       const joined = room.join(request.body.name);
+      await persistRoom(room);
       broadcast(room.roomId, snapshotMessage(joined.snapshot));
       return reply.code(201).send(joined);
     } catch (error) {
@@ -135,6 +150,7 @@ export function buildServer(store: RoomStore = new PersistentRoomStore()) {
     const room = await store.get(request.params.roomId);
     if (!room) return reply.code(404).send({ error: "room-not-found" });
     const snapshot = request.body.action === "disconnect" ? room.disconnect(request.params.participantId) : room.leave(request.params.participantId);
+    await persistRoom(room);
     broadcast(room.roomId, snapshotMessage(snapshot));
     return snapshot;
   });
@@ -164,6 +180,7 @@ export function buildServer(store: RoomStore = new PersistentRoomStore()) {
           if (message.type === "reconnect") {
             try {
               const reconnected = room.reconnect(message.participantId, message.credential);
+              await persistRoom(room);
               socket.send(serializeMessage(snapshotMessage(reconnected.snapshot)));
               broadcast(room.roomId, snapshotMessage(reconnected.snapshot));
             } catch {

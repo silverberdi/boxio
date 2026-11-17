@@ -76,3 +76,18 @@ test("PostgreSQL snapshot round-trip restores the last confirmed move after rest
   assert.equal(duplicate.eventSequence, 1);
   assert.equal(restored!.getSnapshot().eventSequence, 1);
 });
+
+test("PostgreSQL adapter recovers a room by invitation code", async () => {
+  const room = PrivateRoom.create(createRectangularBoard(2, 2), "Host");
+  const queries: Array<{ text: string; values: readonly unknown[] }> = [];
+  const persistence = new PostgresRoomPersistence(async (text, values = []) => {
+    queries.push({ text, values });
+    return { rows: [{ snapshot: room.toPersistence() }] };
+  });
+
+  const restored = await persistence.loadByInvitation(room.invitationCode);
+  assert.ok(restored);
+  assert.equal(restored!.roomId, room.roomId);
+  assert.match(queries[0].text, /invitation_code/);
+  assert.deepEqual(queries[0].values, [room.invitationCode]);
+});

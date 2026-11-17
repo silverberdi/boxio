@@ -348,7 +348,7 @@ export class AppComponent {
       const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "No se pudo acceder a la sala.");
-      this.onlineRoomId = payload.roomId ?? this.onlineRoomId;
+      this.onlineRoomId = payload.roomId ?? payload.snapshot?.roomId ?? this.onlineRoomId;
       this.onlineParticipantId = payload.participantId;
       this.onlineCredential = payload.reconnectCredential;
       this.onlineSnapshot = payload.snapshot;
