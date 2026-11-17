@@ -4,7 +4,7 @@
 
 - [x] 1.1 Confirmar la frontera del monorepo y los contratos serializables de sala, participante actual/histórico, reserva, snapshot, versión y resultado; verificar que el diseño no introduce un segundo motor ni servicios fuera de D6.
 - [x] 1.2 Crear las migraciones PostgreSQL/Alembic para salas, participantes históricos, credenciales hasheadas, snapshots y comandos confirmados con restricciones de capacidad, unicidad e idempotencia; verificar migración limpia, rollback y ausencia de secretos en logs.
-  - Evidencia candidata: `001_private_rooms.sql` incluye constraints, rollback Alembic, hash de credenciales y bloqueo transaccional de capacidad; los tests verifican el contrato y la ausencia de secretos. Falta ejecutar migración/rollback contra PostgreSQL real en este entorno (Docker/PostgreSQL no disponible).
+  - Evidencia candidata: `001_private_rooms.sql` incluye constraints, rollback Alembic, hash de credenciales y bloqueo transaccional de capacidad; los tests verifican el contrato y la ausencia de secretos. Falta evidencia de candidato ejecutando upgrade/rollback contra PostgreSQL real: Docker no tiene daemon disponible y no hay `psql` local.
 - [x] 1.3 Implementar creación/entrada por invitación como localizador no autenticador, identidad opaca y límite transaccional de cuatro participantes; verificar escenarios de dos participantes para iniciar y quinto/entradas concurrentes rechazadas.
 - [x] 1.4 Implementar el agregado autoritativo que reutiliza el motor canónico para aristas, cierres, puntuación, bonus, fin y empate; verificar comandos fuera de turno, aristas ilegales, siluetas válidas y ausencia de mutación al rechazar.
 
@@ -26,14 +26,14 @@
 
 - [x] 4.1 Implementar salida del anfitrión y ciclo de vida de sala; verificar continuidad con otros participantes, ausencia de transferencia/conversión, opción provisional de esperar o iniciar una partida nueva contra máquina estando solo y cierre cuando nadie permanece.
 - [x] 4.2 Implementar restauración desde el último movimiento confirmado tras reinicio del backend; verificar recuperación de sala activa, snapshot correcto y que el movimiento confirmado no se duplica.
-  - Evidencia candidata: `PostgresRoomPersistence.load` round-trip en `postgres-room-persistence.test.ts` y `PrivateRoom.restore` en subtest 16; el snapshot conserva la jugada confirmada y el reintento conserva `eventSequence` 1 sin mutación.
+  - Evidencia candidata: `PostgresRoomPersistence.load` round-trip en `postgres-room-persistence.test.ts` y `PrivateRoom.restore` en subtest 16; el snapshot conserva la jugada confirmada y el reintento conserva `eventSequence` 1 sin mutación. Falta evidencia de candidato con reinicio real del backend y PostgreSQL durable; el entorno no dispone de PostgreSQL ejecutable.
 - [x] 4.3 Implementar limpieza idempotente de salas terminadas a las 24 horas; verificar eliminación de credenciales/datos temporales y que no se presenta un SLA.
 
 ## 5. Pruebas de aceptación y evidencia
 
 - [x] 5.1 Añadir pruebas unitarias/integración del agregado para identidad, capacidad, autorización, duplicados, entrada tardía, expiración, reemplazo, host, cierre y resultados; verificar trazabilidad con cada requisito de `private-online-rooms`.
 - [x] 5.2 Añadir Gherkin/E2E con clientes reales contra el servidor WebSocket y PostgreSQL para comandos concurrentes, dos a cuatro participantes, reconexión en los límites, reinicio y retención; verificar eventos ordenados y transiciones durables.
-  - Evidencia candidata: `private-room.e2e.test.ts` cubre dos clientes concurrentes y cuatro clientes WebSocket reales; `postgres-room-persistence.test.ts` cubre round-trip de snapshot. Falta la ejecución conjunta contra PostgreSQL real y no se marca completa sin esa evidencia de candidato.
+  - Evidencia candidata: `private-room.e2e.test.ts` cubre dos clientes concurrentes y cuatro clientes WebSocket reales; `postgres-room-persistence.test.ts` cubre round-trip de snapshot. Falta evidencia de candidato ejecutando el flujo conjunto contra PostgreSQL real (incluidos reinicio y retención); Docker no tiene daemon disponible.
 
 - [x] 5.3 Ejecutar la regresión del motor GAME-01..GAME-10, modos local/máquina 2–4 y tableros clásicos/siluetas; verificar que D6 no cambia legalidad de aristas, cierres, puntuación, bonus, fin, empates ni independencia de siluetas.
 - [x] 5.4 Revisar el diff y preparar evidencia reproducible del candidato, incluyendo exclusiones de chat, cuentas, Redis/Kafka/microservicios, hosting, bot sustituto y assets externos; verificar que no se afirma merge, despliegue ni validación física.
