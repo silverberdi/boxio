@@ -88,7 +88,7 @@ import { UpdateCoordinator } from "./update-coordinator";
         </label>
         <label class="field-label">
           <span>Código de invitación</span>
-          <input [value]="onlineInvitation" (input)="onlineInvitation = $any($event.target).value.toUpperCase()" maxlength="12" placeholder="Ej: A1B2C3" aria-label="Código de invitación">
+          <input [value]="onlineInvitation" (input)="onlineInvitation = $any($event.target).value" maxlength="64" placeholder="Ej: eWzFa6qHK..." aria-label="Código de invitación">
         </label>
         <button class="primary" [disabled]="isConnecting" (click)="joinPrivateRoom()">
           {{ isConnecting ? 'Conectando...' : 'Entrar en sala' }}
