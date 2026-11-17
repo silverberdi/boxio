@@ -294,6 +294,31 @@ export class AppComponent {
   onlineSnapshot: any = null;
   onlineError = "";
   onlineConnection = "Sin conexión";
+  private onlineSocket?: WebSocket;
+
+  connectOnlineSocket() {
+    if (typeof window === "undefined" || !this.onlineRoomId) return;
+    if (this.onlineSocket) {
+      try { this.onlineSocket.close(); } catch {}
+    }
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = protocol + "//" + window.location.host + "/rooms/" + this.onlineRoomId + "/ws";
+    const ws = new WebSocket(url);
+    this.onlineSocket = ws;
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "ack" || data.type === "snapshot") {
+          if (data.snapshot) {
+            this.onlineSnapshot = data.snapshot;
+          }
+        }
+      } catch {}
+    };
+    ws.onclose = () => {
+      if (this.onlineSocket === ws) this.onlineSocket = undefined;
+    };
+  }
 
   hoveredEdgeId: string | null = null;
   isDrawing = false;
@@ -330,6 +355,7 @@ export class AppComponent {
       this.onlineInvitation = payload.invitationCode ?? this.onlineInvitation;
       this.onlineConnection = "Confirmado por servidor";
       this.onlineError = creating ? "Comparte este código: " + this.onlineInvitation : "Entrada confirmada.";
+      this.connectOnlineSocket();
     } catch (error) { this.onlineConnection = "Rechazado"; this.onlineError = error instanceof Error ? error.message : "No se pudo acceder a la sala."; }
   }
 
