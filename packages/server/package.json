@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": { "build": "tsc -p tsconfig.json", "test": "node --test dist/health.test.js" },
-  "dependencies": { "@boxio/engine": "0.1.0", "fastify": "5.12.8" }
+  "scripts": { "build": "tsc -p tsconfig.json", "test": "node --test dist/*.test.js" },
+  "dependencies": { "@boxio/engine": "0.1.0", "fastify": "5.12.8", "@fastify/websocket": "11.2.0" }
 }
