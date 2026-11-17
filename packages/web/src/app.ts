@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, ChangeDetectorRef } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { SwUpdate } from "@angular/service-worker";
 import {
@@ -360,7 +360,10 @@ export class AppComponent {
   boardSelectionId = "classic";
   private readonly updates = new UpdateCoordinator();
 
-  constructor(private readonly swUpdate: SwUpdate) {
+  constructor(
+    private readonly swUpdate: SwUpdate,
+    private readonly cdr: ChangeDetectorRef
+  ) {
     if (swUpdate.isEnabled) {
       swUpdate.versionUpdates.subscribe((event) => {
         if (event.type === "VERSION_READY") {
@@ -425,6 +428,7 @@ export class AppComponent {
     this.onlineError = "";
     this.onlineConnection = "";
     this.screen = "home";
+    this.cdr.detectChanges();
   }
 
   getParticipantColor(participantId: string): string {
@@ -452,6 +456,7 @@ export class AppComponent {
     this.onlineSocket = ws;
     ws.onopen = () => {
       this.onlineConnection = "Conectado en tiempo real";
+      this.cdr.detectChanges();
     };
     ws.onmessage = (event) => {
       try {
@@ -459,6 +464,7 @@ export class AppComponent {
         if (data.type === "ack" || data.type === "snapshot") {
           if (data.snapshot) {
             this.onlineSnapshot = data.snapshot;
+            this.cdr.detectChanges();
           }
         }
       } catch {}
@@ -467,6 +473,7 @@ export class AppComponent {
       if (this.onlineSocket === ws) {
         this.onlineSocket = undefined;
         this.onlineConnection = "Desconectado del servidor";
+        this.cdr.detectChanges();
       }
     };
   }
@@ -481,6 +488,7 @@ export class AppComponent {
       this.onlineError = "";
       this.onlineConnection = "";
       this.screen = "online";
+      this.cdr.detectChanges();
       return;
     }
     if (mode === "local" || mode === "machine") {
@@ -494,6 +502,7 @@ export class AppComponent {
     this.isConnecting = true;
     this.onlineError = "";
     this.onlineConnection = "Creando sala...";
+    this.cdr.detectChanges();
     try {
       await this.privateRequest("/api/rooms", {
         name: this.onlineName.trim() || "Anfitrión",
@@ -501,6 +510,7 @@ export class AppComponent {
       }, true);
     } finally {
       this.isConnecting = false;
+      this.cdr.detectChanges();
     }
   }
 
@@ -508,11 +518,13 @@ export class AppComponent {
     const code = this.onlineInvitation.trim();
     if (!code) {
       this.onlineError = "Escribe el código de invitación que te compartieron.";
+      this.cdr.detectChanges();
       return;
     }
     this.isConnecting = true;
     this.onlineError = "";
     this.onlineConnection = "Conectando con la sala...";
+    this.cdr.detectChanges();
     try {
       await this.privateRequest(`/api/rooms/${encodeURIComponent(code)}/join`, {
         name: this.onlineJoinName.trim() || "Invitado",
@@ -520,6 +532,7 @@ export class AppComponent {
       }, false);
     } finally {
       this.isConnecting = false;
+      this.cdr.detectChanges();
     }
   }
 
@@ -540,9 +553,11 @@ export class AppComponent {
       this.onlineConnection = "Conectado al servidor";
       this.onlineError = "";
       this.connectOnlineSocket();
+      this.cdr.detectChanges();
     } catch (error) {
       this.onlineConnection = "Error de conexión";
       this.onlineError = error instanceof Error ? error.message : "No se pudo acceder a la sala.";
+      this.cdr.detectChanges();
     }
   }
 
@@ -568,8 +583,10 @@ export class AppComponent {
       } else {
         this.onlineError = payload.code === "forbidden" ? "No es tu turno." : (payload.error ?? "La jugada fue rechazada por el servidor.");
       }
+      this.cdr.detectChanges();
     } catch (err) {
       this.onlineError = err instanceof Error ? err.message : "Error de comunicación con el servidor.";
+      this.cdr.detectChanges();
     }
   }
 

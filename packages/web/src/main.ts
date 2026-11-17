@@ -1,3 +1,4 @@
+import "zone.js";
 import { provideServiceWorker } from "@angular/service-worker";
 import { bootstrapApplication } from "@angular/platform-browser";
 import { isDevMode } from "@angular/core";
