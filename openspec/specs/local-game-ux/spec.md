@@ -6,6 +6,20 @@ Define la experiencia observable para configurar y jugar partidas locales de 2�
 
 ## Requirements
 
+### Requirement: Configure human and automatic participants
+
+La configuración de partida contra máquina SHALL permitir un humano y de uno a tres bots, para un total de 2–4 participantes, y SHALL permitir seleccionar la dificultad de cada bot entre fácil, medio y difícil sin registro obligatorio.
+
+#### Scenario: Configure one to three bots
+- **DADO** una configuración de partida contra máquina
+- **CUANDO** se selecciona uno, dos o tres bots junto con el humano
+- **ENTONCES** la partida queda configurada con 2, 3 o 4 participantes totales y dificultades válidas
+
+#### Scenario: Reject invalid machine participant count
+- **DADO** una configuración contra máquina
+- **CUANDO** se intenta iniciar con cero bots o más de tres bots, o sin un humano
+- **ENTONCES** la configuración se rechaza sin crear una partida utilizable
+
 ### Requirement: Local mode entry and configuration
 
 La experiencia SHALL mostrar cuatro modalidades desde el inicio y SHALL presentar como no habilitada la ruta de cualquier modalidad que todavía no corresponda a una entrega disponible. La modalidad local SHALL permitir entre 2 y 4 jugadores, apodos, colores y selección rectangular de tablero, sin registro obligatorio.
