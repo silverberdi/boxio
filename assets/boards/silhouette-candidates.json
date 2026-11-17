@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "usage": "Approved small MVP source masks for cross, heart and simple star; see docs/DECISIONS.md DEC-26",
+  "usage": "Approved MVP masks for cross, heart and simple star in small, medium and large sizes; see docs/DECISIONS.md DEC-26",
   "legend": "# = present unit square, . = missing",
   "templates": [
     {
@@ -35,8 +35,104 @@
         "..###..",
         "..#.#.."
       ]
+    },
+    {
+      "id": "heart-medium",
+      "rows": [
+        "..##..##..",
+        ".########.",
+        "##########",
+        "##########",
+        ".########.",
+        "..######..",
+        "...####...",
+        "....##...."
+      ]
+    },
+    {
+      "id": "heart-large",
+      "rows": [
+        "...###...###...",
+        "..############.",
+        ".#############.",
+        "###############",
+        "###############",
+        ".#############.",
+        "..###########..",
+        "...#########...",
+        "....#######....",
+        ".....#####.....",
+        "......###......",
+        ".......#......."
+      ]
+    },
+    {
+      "id": "cross-medium",
+      "rows": [
+        "...####...",
+        "...####...",
+        "...####...",
+        "##########",
+        "##########",
+        "##########",
+        "...####...",
+        "...####...",
+        "...####..."
+      ]
+    },
+    {
+      "id": "cross-large",
+      "rows": [
+        ".....#####.....",
+        ".....#####.....",
+        ".....#####.....",
+        ".....#####.....",
+        "###############",
+        "###############",
+        "###############",
+        "###############",
+        ".....#####.....",
+        ".....#####.....",
+        ".....#####.....",
+        ".....#####.....",
+        ".....#####....."
+      ]
+    },
+    {
+      "id": "star-medium",
+      "rows": [
+        "....##....",
+        "...####...",
+        "..######..",
+        ".########.",
+        "##########",
+        ".########.",
+        "..######..",
+        "...####...",
+        "....##....",
+        "....##...."
+      ]
+    },
+    {
+      "id": "star-large",
+      "rows": [
+        "......###......",
+        ".....#####.....",
+        "....#######....",
+        "...#########...",
+        "..###########..",
+        ".#############.",
+        "###############",
+        "..###########..",
+        "...#########...",
+        "....#######....",
+        ".....#####.....",
+        "......###......",
+        "......###......",
+        "......###......"
+      ]
     }
   ],
-  "status": "APPROVED_SMALL_SOURCE_MASKS",
-  "note": "Cross, heart and simple star are the MVP set. Medium and large masks are deliverables of Issue #6, derived from these small source masks; all active cells remain unit squares. T is excluded."
+  "status": "APPROVED_MVP_CATALOG",
+  "note": "Cross, heart and simple star are the MVP set in small, medium and large sizes; all active cells remain unit squares. T is excluded."
 }

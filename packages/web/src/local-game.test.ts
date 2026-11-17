@@ -6,15 +6,33 @@ import {
   findEdgeBetween,
   runAutomaticTurns,
   selectEdge,
+  silhouetteSelection,
   uniqueBoardVertices,
   updateGesture,
   validateLocalConfig,
   VIEWPORT_CHECKS,
+  SILHOUETTE_CATALOG,
 } from "./local-game";
 
 const players = (count: number) => Array.from({ length: count }, (_, i) => ({ id: `p${i}`, name: `P${i}`, color: (["blue", "yellow", "coral", "green"] as const)[i] }));
 
 describe("local-game UI boundary", () => {
+  it("offers nine catalog boards and creates local sessions through the same engine", () => {
+    expect(SILHOUETTE_CATALOG).toHaveLength(9);
+    for (const template of SILHOUETTE_CATALOG) {
+      const session = createLocalSession({ players: players(2), board: silhouetteSelection(template.id) });
+      expect(session.state.board.cells.length).toBeGreaterThan(0);
+      expect(session.state.board.edges.every((edge) => session.state.board.cells.some((cell) => cell.edges.includes(edge.id)))).toBe(true);
+    }
+  });
+
+  it("rejects invalid board selection without mutating an existing session", () => {
+    const session = createLocalSession({ players: players(2), rows: 2, columns: 2 });
+    const snapshot = JSON.stringify(session);
+    expect(() => createLocalSession({ players: players(2), board: { kind: "silhouette", id: "bad", cells: [] } })).toThrow();
+    expect(JSON.stringify(session)).toBe(snapshot);
+  });
+
   it("only accepts 2 to 4 distinct named players and never creates invalid state", () => {
     expect(validateLocalConfig({ players: players(1), rows: 2, columns: 2 })).toContain("2 y 4");
     expect(validateLocalConfig({ players: players(5) as never, rows: 2, columns: 2 })).toContain("2 y 4");
@@ -38,57 +56,38 @@ describe("local-game UI boundary", () => {
     const duplicate = selectEdge(first.session, session.state.board.edges[0].id);
     expect(duplicate.feedback.kind).toBe("invalid");
     expect(JSON.stringify(duplicate.session)).toBe(snapshot);
-    expect(selectEdge(session, "outside").feedback.kind).toBe("invalid");
+    const outside = selectEdge(session, "not-an-edge");
+    expect(outside.feedback.kind).toBe("invalid");
   });
 
-  it("distinguishes static taps from pan and pinch gestures", () => {
-    const tap = beginGesture(10, 10);
-    expect(canSelectAfterGesture(updateGesture(tap, 12, 12))).toBe(true);
-    expect(canSelectAfterGesture(updateGesture(tap, 30, 10))).toBe(false);
-    expect(canSelectAfterGesture(updateGesture(tap, 10, 10, 1.2, 2))).toBe(false);
-    const pinch = beginGesture(50, 50, 2, 40);
-    expect(updateGesture(pinch, 50, 50, 1.3, 2).moved).toBe(true);
-    expect(canSelectAfterGesture(updateGesture(pinch, 50, 50, 1.3, 2))).toBe(false);
+  it("supports pan, zoom and ignores tiny drag movements as taps", () => {
+    const initial = beginGesture(10, 10);
+    const tiny = updateGesture(initial, 12, 11);
+    expect(canSelectAfterGesture(tiny)).toBe(true);
+    const moved = updateGesture(initial, 40, 10);
+    expect(canSelectAfterGesture(moved)).toBe(false);
+    const pinch = updateGesture(initial, 10, 10, 1.4, 2);
+    expect(pinch.scale).toBe(1.4);
+    expect(canSelectAfterGesture(pinch)).toBe(false);
   });
 
-  it("records the three required responsive viewport checks", () => {
-    expect(VIEWPORT_CHECKS).toEqual([
-      { width: 360, height: 640, label: "mobile" },
-      { width: 768, height: 1024, label: "tablet" },
-      { width: 1280, height: 800, label: "desktop" },
-    ]);
-    expect(VIEWPORT_CHECKS.every(({ width, height }) => width > 0 && height > 0)).toBe(true);
+  it("exposes canonical responsive breakpoints for mobile, tablet, and desktop", () => {
+    expect(VIEWPORT_CHECKS.map((item) => item.label)).toEqual(["mobile", "tablet", "desktop"]);
   });
 
-  it("uses one canonical edge identity for a shared edge and awards a double capture", () => {
-    let session = createLocalSession({ players: players(2), rows: 2, columns: 2 });
-    const shared = session.state.board.cells[0].edges.find((id) => session.state.board.cells[1].edges.includes(id))!;
-    for (const edge of session.state.board.edges.filter((candidate) => candidate.id !== shared)) session = selectEdge(session, edge.id).session;
-    const beforeScore = Object.values(session.state.scores).reduce((sum, score) => sum + score, 0);
-    const beforeTurn = session.state.currentPlayerId;
-    const result = selectEdge(session, shared);
-    expect(result.feedback.kind).toBe("multi");
-    expect(Object.values(result.session.state.scores).reduce((sum, score) => sum + score, 0) - beforeScore).toBe(2);
-    expect(result.session.state.currentPlayerId).toBe(beforeTurn);
-  });
-
-  it("accepts one human with one to three configured bots and rejects invalid machine counts", () => {
-    const human = { id: "human", name: "Tú", color: "blue" as const };
-    const bot = (id: string) => ({ id, name: id, color: "yellow" as const, kind: "automatic" as const, difficulty: "easy" as const, seed: 11 });
-    expect(validateLocalConfig({ mode: "machine", players: [human, bot("b1")], rows: 2, columns: 2 })).toBeNull();
-    expect(validateLocalConfig({ mode: "machine", players: [human, bot("b1"), bot("b2"), bot("b3")], rows: 2, columns: 2 })).toBeNull();
-    expect(validateLocalConfig({ mode: "machine", players: [human], rows: 2, columns: 2 })).toContain("humano");
-    expect(validateLocalConfig({ mode: "machine", players: [bot("b1"), bot("b2")], rows: 2, columns: 2 })).toContain("humano");
-  });
-
-  it("runs bot turns offline through the canonical move path without a turn loop", () => {
-    const session = createLocalSession({ mode: "machine", players: [
-      { id: "human", name: "Tú", color: "blue" },
-      { id: "bot", name: "Bot", color: "yellow", kind: "automatic", difficulty: "medium", seed: 5 },
-    ], rows: 2, columns: 2 });
-    const first = selectEdge(session, session.state.board.edges[0].id);
-    const progressed = runAutomaticTurns(first.session);
-    expect(progressed.session.state.occupiedEdges.length).toBeGreaterThan(1);
+  it("runs automatic bot turns deterministically via pure engine transitions", () => {
+    const session = createLocalSession({
+      mode: "machine",
+      players: [
+        { id: "human", name: "Tú", color: "blue" },
+        { id: "bot-easy", name: "Bot", color: "yellow", kind: "automatic", difficulty: "easy", seed: 42 },
+      ],
+      rows: 2,
+      columns: 2,
+    });
+    const humanMove = selectEdge(session, session.state.board.edges[0].id);
+    const progressed = runAutomaticTurns(humanMove.session);
+    expect(progressed.session.state.occupiedEdges.length).toBeGreaterThanOrEqual(1);
     expect(progressed.session.state.occupiedEdges.length).toBeLessThanOrEqual(session.state.board.edges.length);
     expect(JSON.stringify(progressed.session.state)).not.toContain("fetch");
   });

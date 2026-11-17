@@ -1,7 +1,27 @@
 import { Component } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { SwUpdate } from "@angular/service-worker";
-import { canSelectAfterGesture, createLocalSession, edgeGeometry, findEdgeBetween, idleGesture, beginGesture, runAutomaticTurns, uniqueBoardVertices, updateGesture, MODES, PLAYER_COLORS, selectEdge, type ActionFeedback, type GameMode, type GestureState, type LocalPlayerConfig, type LocalSession } from "./local-game";
+import {
+  BOARD_SELECTIONS,
+  canSelectAfterGesture,
+  createLocalSession,
+  edgeGeometry,
+  findEdgeBetween,
+  idleGesture,
+  beginGesture,
+  runAutomaticTurns,
+  silhouetteSelection,
+  uniqueBoardVertices,
+  updateGesture,
+  MODES,
+  PLAYER_COLORS,
+  selectEdge,
+  type ActionFeedback,
+  type GameMode,
+  type GestureState,
+  type LocalPlayerConfig,
+  type LocalSession,
+} from "./local-game";
 import { playBoxioSound, soundCatalog } from "../../../assets/audio/boxio-sounds";
 import { UpdateCoordinator } from "./update-coordinator";
 
@@ -29,7 +49,7 @@ import { UpdateCoordinator } from "./update-coordinator";
   <section *ngIf="screen === 'setup'" class="panel setup">
     <button class="back" (click)="screen = 'home'">← Inicio</button>
     <h1>Prepara tu partida</h1>
-    <p class="muted">{{ machineMode ? 'Un humano y entre 1 y 3 bots.' : 'Elige entre 2 y 4 jugadores.' }} Tablero rectangular, sin conexión.</p>
+    <p class="muted">{{ machineMode ? 'Un humano y entre 1 y 3 bots.' : 'Elige entre 2 y 4 jugadores.' }} Tablero cuadrado o silueta, sin conexión.</p>
     <div class="player-count">
       <button *ngFor="let count of [2,3,4]" [class.selected]="playerCount === count" (click)="setPlayerCount(count)">{{ machineMode ? count - 1 : count }} {{ machineMode ? 'bots' : 'jugadores' }}</button>
     </div>
@@ -38,16 +58,19 @@ import { UpdateCoordinator } from "./update-coordinator";
         {{ player.kind === 'automatic' ? 'Bot ' + i : 'Humano' }}
         <span class="color-dot" [style.background]="colorValue(player.color)"></span>
         <input [value]="player.name" (input)="setName(i, $any($event.target).value)" maxlength="18" [attr.aria-label]="'Apodo del participante ' + (i + 1)">
-        <select *ngIf="player.kind === 'automatic'" [value]="player.difficulty" (change)="setDifficulty(i, $any($event.target).value)">
-          <option value="easy">Fácil</option>
-          <option value="medium">Media</option>
-          <option value="hard">Difícil</option>
-        </select>
+        <select *ngIf="player.kind === 'automatic'" [value]="player.difficulty" (change)="setDifficulty(i, $any($event.target).value)"><option value="easy">Fácil</option><option value="medium">Media</option><option value="hard">Difícil</option></select>
       </label>
     </div>
     <div class="board-choice">
-      <label>Filas <input type="number" min="2" max="8" [value]="rows" (input)="rows = +$any($event.target).value"></label>
-      <label>Columnas <input type="number" min="2" max="8" [value]="columns" (input)="columns = +$any($event.target).value"></label>
+      <label>Tablero
+        <select [value]="boardSelectionId" (change)="boardSelectionId = $any($event.target).value">
+          <option *ngFor="let selection of boardSelections" [value]="selection.id">{{ selection.label }}</option>
+        </select>
+      </label>
+      <ng-container *ngIf="boardSelectionId === 'classic'">
+        <label>Filas <input type="number" min="2" max="8" [value]="rows" (input)="rows = +$any($event.target).value"></label>
+        <label>Columnas <input type="number" min="2" max="8" [value]="columns" (input)="columns = +$any($event.target).value"></label>
+      </ng-container>
     </div>
     <p *ngIf="setupError" class="error" role="alert">{{ setupError }}</p>
     <button class="primary" (click)="startGame()">Empezar partida</button>
@@ -164,7 +187,7 @@ import { UpdateCoordinator } from "./update-coordinator";
     .selected,.primary{background:#1e88ff!important;color:#fff!important}
     .player-form{display:grid;gap:10px}
     .player-form label{display:grid;grid-template-columns:1fr auto 1.4fr;align-items:center;gap:8px}
-    .player-form input,.board-choice input{min-height:44px;border:2px solid #9acbe4;border-radius:10px;padding:0 10px;font:inherit;color:#082c7c;box-sizing:border-box;width:100%}
+    .player-form input,.player-form select,.board-choice input,.board-choice select{min-height:44px;border:2px solid #9acbe4;border-radius:10px;padding:0 10px;font:inherit;color:#082c7c;box-sizing:border-box;width:100%}
     .color-dot{display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #082c7c}
     .board-choice{display:flex;gap:12px;margin:14px 0}
     .board-choice label{flex:1}
@@ -210,6 +233,8 @@ export class AppComponent {
   playerCount = 2;
   rows = 3;
   columns = 3;
+  boardSelections = BOARD_SELECTIONS;
+  boardSelectionId = "classic";
   private readonly updates = new UpdateCoordinator();
 
   constructor(private readonly swUpdate: SwUpdate) {
@@ -275,11 +300,15 @@ export class AppComponent {
   }
 
   startGame() {
+    const board = this.boardSelectionId === "classic"
+      ? { kind: "classic" as const, rows: this.rows, columns: this.columns }
+      : silhouetteSelection(this.boardSelectionId);
     const config = {
       mode: this.machineMode ? ("machine" as const) : ("local" as const),
       players: this.draftPlayers.slice(0, this.playerCount),
+      board,
       rows: this.rows,
-      columns: this.columns
+      columns: this.columns,
     } as const;
     try {
       this.session = createLocalSession(config);
@@ -312,7 +341,7 @@ export class AppComponent {
       yellow: "#ffb800",
       coral: "#ff4757",
       green: "#2ed573",
-      white: "#ffffff"
+      white: "#ffffff",
     } as Record<string, string>)[color] ?? "#082c7c";
   }
 
