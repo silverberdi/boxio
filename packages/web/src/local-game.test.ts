@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { beginGesture, canSelectAfterGesture, createLocalSession, runAutomaticTurns, selectEdge, updateGesture, validateLocalConfig, VIEWPORT_CHECKS } from "./local-game";
+import {
+  beginGesture,
+  canSelectAfterGesture,
+  createLocalSession,
+  findEdgeBetween,
+  runAutomaticTurns,
+  selectEdge,
+  uniqueBoardVertices,
+  updateGesture,
+  validateLocalConfig,
+  VIEWPORT_CHECKS,
+} from "./local-game";
 
 const players = (count: number) => Array.from({ length: count }, (_, i) => ({ id: `p${i}`, name: `P${i}`, color: (["blue", "yellow", "coral", "green"] as const)[i] }));
 
@@ -17,6 +28,7 @@ describe("local-game UI boundary", () => {
     expect(session.state.currentPlayerId).toBe("p0");
     expect(Object.values(session.state.scores)).toEqual([0, 0]);
     expect(session.state.board.cells).toHaveLength(4);
+    expect(session.edgeOwners).toEqual({});
   });
 
   it("rejects occupied and outside edges without mutating the session", () => {
@@ -79,5 +91,42 @@ describe("local-game UI boundary", () => {
     expect(progressed.session.state.occupiedEdges.length).toBeGreaterThan(1);
     expect(progressed.session.state.occupiedEdges.length).toBeLessThanOrEqual(session.state.board.edges.length);
     expect(JSON.stringify(progressed.session.state)).not.toContain("fetch");
+  });
+
+  it("tracks edge ownership by player for both human and automatic moves", () => {
+    const session = createLocalSession({
+      mode: "machine",
+      players: [
+        { id: "human", name: "Tú", color: "blue" },
+        { id: "bot", name: "Bot", color: "yellow", kind: "automatic", difficulty: "easy", seed: 99 },
+      ],
+      rows: 2,
+      columns: 2,
+    });
+    const edgeId = session.state.board.edges[0].id;
+    const humanMove = selectEdge(session, edgeId);
+    expect(humanMove.session.edgeOwners[edgeId]).toBe("human");
+
+    const withBot = runAutomaticTurns(humanMove.session);
+    for (const occupied of withBot.session.state.occupiedEdges) {
+      expect(withBot.session.edgeOwners[occupied]).toBeDefined();
+      expect(["human", "bot"]).toContain(withBot.session.edgeOwners[occupied]);
+    }
+  });
+
+  it("supports drag-to-draw vertex connection helpers", () => {
+    const session = createLocalSession({ players: players(2), rows: 2, columns: 2 });
+    const vertices = uniqueBoardVertices(session.state.board);
+    expect(vertices).toHaveLength(9); // (2+1) x (2+1) = 9 vertices
+
+    const edge = findEdgeBetween(session.state.board, { row: 0, column: 0 }, { row: 0, column: 1 });
+    expect(edge).toBeDefined();
+    expect(edge?.id).toBe("0,0-0,1");
+
+    const reversed = findEdgeBetween(session.state.board, { row: 0, column: 1 }, { row: 0, column: 0 });
+    expect(reversed?.id).toBe("0,0-0,1");
+
+    const nonAdjacent = findEdgeBetween(session.state.board, { row: 0, column: 0 }, { row: 1, column: 1 });
+    expect(nonAdjacent).toBeUndefined();
   });
 });
