@@ -7,6 +7,9 @@ export type Edge = Readonly<{ id: EdgeId; a: Vertex; b: Vertex }>;
 export type SquareCell = Readonly<{ id: CellId; row: number; column: number; edges: readonly [EdgeId, EdgeId, EdgeId, EdgeId] }>;
 export type Board = Readonly<{ cells: readonly SquareCell[]; edges: readonly Edge[] }>;
 export type BoardDimensions = Readonly<{ rows: number; columns: number }>;
+export type BoardSelection =
+  | Readonly<{ kind: "classic"; rows: unknown; columns: unknown }>
+  | Readonly<{ kind: "silhouette"; id: string; cells: ReadonlyArray<CellCoordinate> }>;
 export type BotDifficulty = "easy" | "medium" | "hard";
 export type HumanParticipant = Readonly<{ id: PlayerId; name: string; kind?: "human" }>;
 export type AutomaticParticipant = Readonly<{ id: PlayerId; name: string; kind: "automatic"; difficulty: BotDifficulty; seed: number }>;
@@ -58,6 +61,23 @@ function buildBoard(cells: ReadonlyArray<CellCoordinate>): Board {
   return { cells: output, edges: [...edgeMap.values()].sort((a, b) => a.id.localeCompare(b.id)) };
 }
 
+function assertConnected(cells: ReadonlyArray<CellCoordinate>): void {
+  const keys = new Set(cells.map(cellKey));
+  const pending = [cells[0]];
+  const visited = new Set<string>();
+  while (pending.length) {
+    const cell = pending.pop()!;
+    const key = cellKey(cell);
+    if (visited.has(key)) continue;
+    visited.add(key);
+    for (const neighbour of [
+      { row: cell.row - 1, column: cell.column }, { row: cell.row + 1, column: cell.column },
+      { row: cell.row, column: cell.column - 1 }, { row: cell.row, column: cell.column + 1 },
+    ]) if (keys.has(cellKey(neighbour))) pending.push(neighbour);
+  }
+  if (visited.size !== keys.size) throw new Error("A cell mask must be connected by sides");
+}
+
 export function validateDimensions(rows: unknown, columns: unknown): BoardDimensions {
   for (const dimension of [rows, columns]) {
     if (typeof dimension !== "number" || !Number.isFinite(dimension) || !Number.isInteger(dimension)) throw new TypeError("Rows and columns must be finite integers");
@@ -75,11 +95,21 @@ export function createRectangularBoard(rows: unknown, columns: unknown): Board {
 
 export function prepareCellMask(cells: ReadonlyArray<CellCoordinate>): Board {
   if (!Array.isArray(cells) || cells.length === 0) throw new RangeError("A cell mask must not be empty");
+  if (cells.some((cell) => !cell || typeof cell !== "object")) throw new TypeError("Cells must be coordinate objects");
+  for (const cell of cells) assertCellCoordinate(cell);
+  if (new Set(cells.map(cellKey)).size !== cells.length) throw new Error("Duplicate cells are not allowed");
+  assertConnected(cells);
   return buildBoard(cells);
 }
 
 export function createBoard(cells: ReadonlyArray<CellCoordinate>): Board {
-  return cells.length === 0 ? buildBoard([]) : prepareCellMask(cells);
+  return prepareCellMask(cells);
+}
+
+export function createBoardFromSelection(selection: BoardSelection): Board {
+  if (selection?.kind === "classic") return createRectangularBoard(selection.rows, selection.columns);
+  if (selection?.kind === "silhouette" && typeof selection.id === "string") return prepareCellMask(selection.cells);
+  throw new TypeError("Unknown board selection");
 }
 
 export function createGame(board: Board, players: readonly Player[]): GameState {
@@ -110,8 +140,8 @@ function immediateCaptures(state: GameState, edges = canonicalEdges(state)): rea
 }
 
 function exposesCapture(state: GameState, edgeId: EdgeId): boolean {
-  const move = applyMove(state, { playerId: state.currentPlayerId, edgeId });
-  return move.accepted && immediateCaptures(move.state).length > 0;
+  const occupied = new Set(state.occupiedEdges);
+  return state.board.cells.some((cell) => cell.edges.includes(edgeId) && cell.edges.filter((candidate) => occupied.has(candidate)).length === 3);
 }
 
 function easyDecision(state: GameState, seed: number): EdgeId {

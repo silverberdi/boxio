@@ -26,12 +26,13 @@ describe("game contracts", () => {
   });
 
   it("prepares square masks, including holes, with the same topology algorithm", () => {
-    const mask = prepareCellMask([{ row: 0, column: 0 }, { row: 0, column: 2 }, { row: 1, column: 0 }, { row: 1, column: 2 }]);
-    expect(mask.cells.map((cell) => cell.id)).toEqual(["0,0", "0,2", "1,0", "1,2"]);
+    const mask = prepareCellMask([{ row: 0, column: 0 }, { row: 0, column: 1 }, { row: 0, column: 2 }, { row: 1, column: 0 }, { row: 1, column: 2 }]);
+    expect(mask.cells.map((cell) => cell.id)).toEqual(["0,0", "0,1", "0,2", "1,0", "1,2"]);
     expect(mask.cells.every((cell) => cell.edges.length === 4)).toBe(true);
     expect(() => prepareCellMask([])).toThrow();
     expect(() => prepareCellMask([{ row: 0.5, column: 0 }])).toThrow();
     expect(() => prepareCellMask([{ row: 0, column: 0 }, { row: 0, column: 0 }])).toThrow();
+    expect(() => prepareCellMask([{ row: 0, column: 0 }, { row: 0, column: 2 }])).toThrow(/connected/);
   });
 
   it("rejects unknown and duplicate edges without mutation", () => {
@@ -63,14 +64,17 @@ describe("game contracts", () => {
     const result = applyMove(before, { playerId: before.currentPlayerId, edgeId: shared });
     expect(result.completedCells.length).toBe(2); expect(result.state.scores.a + result.state.scores.b).toBe(2);
   });
-  it("reports completion and all tied winners", () => {
-    const tiedBoard = createBoard([{ row: 0, column: 0 }, { row: 2, column: 0 }]);
+  it("reports completion and the highest-scoring winner on a connected board", () => {
+    const tiedBoard = createBoard([{ row: 0, column: 0 }, { row: 0, column: 1 }]);
     let state = createGame(tiedBoard, players);
     const first = tiedBoard.cells[0].edges;
-    for (const edgeId of first) state = applyMove(state, { playerId: state.currentPlayerId, edgeId }).state;
+    for (const edgeId of first.filter((edgeId) => !tiedBoard.cells[1].edges.includes(edgeId)).slice(0, 2)) state = applyMove(state, { playerId: state.currentPlayerId, edgeId }).state;
+    state = applyMove(state, { playerId: state.currentPlayerId, edgeId: first.find((edgeId) => !tiedBoard.cells[1].edges.includes(edgeId) && !state.occupiedEdges.includes(edgeId))! }).state;
     const second = tiedBoard.cells[1].edges;
-    for (const edgeId of second) state = applyMove(state, { playerId: state.currentPlayerId, edgeId }).state;
-    expect(state.status).toBe("complete"); expect(state.winners).toEqual(["a", "b"]); expect(Object.values(state.scores).reduce((a, b) => a + b, 0)).toBe(2);
+    const secondOpen = second.find((edgeId) => !state.occupiedEdges.includes(edgeId))!;
+    state = applyMove(state, { playerId: state.currentPlayerId, edgeId: secondOpen }).state;
+    for (const edgeId of second.filter((edgeId) => !state.occupiedEdges.includes(edgeId))) state = applyMove(state, { playerId: state.currentPlayerId, edgeId }).state;
+    expect(state.status).toBe("complete"); expect(state.winners).toEqual(["a"]); expect(Object.values(state.scores).reduce((a, b) => a + b, 0)).toBe(2);
     expect(applyMove(state, { playerId: state.currentPlayerId, edgeId: tiedBoard.edges[0].id }).reason).toBe("game-complete");
   });
   it("rejects duplicate cells and retains square-only topology", () => {

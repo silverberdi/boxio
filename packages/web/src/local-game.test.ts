@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { beginGesture, canSelectAfterGesture, createLocalSession, runAutomaticTurns, selectEdge, updateGesture, validateLocalConfig, VIEWPORT_CHECKS } from "./local-game";
+import { beginGesture, canSelectAfterGesture, createLocalSession, runAutomaticTurns, selectEdge, silhouetteSelection, updateGesture, validateLocalConfig, VIEWPORT_CHECKS, SILHOUETTE_CATALOG } from "./local-game";
 
 const players = (count: number) => Array.from({ length: count }, (_, i) => ({ id: `p${i}`, name: `P${i}`, color: (["blue", "yellow", "coral", "green"] as const)[i] }));
 
 describe("local-game UI boundary", () => {
+  it("offers nine catalog boards and creates local sessions through the same engine", () => {
+    expect(SILHOUETTE_CATALOG).toHaveLength(9);
+    for (const template of SILHOUETTE_CATALOG) {
+      const session = createLocalSession({ players: players(2), board: silhouetteSelection(template.id) });
+      expect(session.state.board.cells.length).toBeGreaterThan(0);
+      expect(session.state.board.edges.every((edge) => session.state.board.cells.some((cell) => cell.edges.includes(edge.id)))).toBe(true);
+    }
+  });
+
+  it("rejects invalid board selection without mutating an existing session", () => {
+    const session = createLocalSession({ players: players(2), rows: 2, columns: 2 });
+    const snapshot = JSON.stringify(session);
+    expect(() => createLocalSession({ players: players(2), board: { kind: "silhouette", id: "bad", cells: [] } })).toThrow();
+    expect(JSON.stringify(session)).toBe(snapshot);
+  });
   it("only accepts 2 to 4 distinct named players and never creates invalid state", () => {
     expect(validateLocalConfig({ players: players(1), rows: 2, columns: 2 })).toContain("2 y 4");
     expect(validateLocalConfig({ players: players(5) as never, rows: 2, columns: 2 })).toContain("2 y 4");

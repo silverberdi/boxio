@@ -1,12 +1,33 @@
-import { applyMove, chooseBotMove, createGame, createRectangularBoard, isAutomaticParticipant, type Board, type Edge, type BotDifficulty, type GameState, type Player } from "../../engine/src/index.js";
+import { applyMove, chooseBotMove, createBoardFromSelection, createGame, isAutomaticParticipant, type Board, type BoardSelection, type Edge, type BotDifficulty, type GameState, type Player } from "../../engine/src/index.js";
+import catalog from "../../../assets/boards/silhouette-candidates.json";
 
 export const PLAYER_COLORS = ["blue", "yellow", "coral", "green"] as const;
 export type PlayerColor = (typeof PLAYER_COLORS)[number];
 export type GameMode = "machine" | "local" | "private" | "public";
 export type LocalPlayerConfig = Readonly<{ id: string; name: string; color: PlayerColor; kind?: "human" | "automatic"; difficulty?: BotDifficulty; seed?: number }>;
-export type LocalConfig = Readonly<{ mode?: "local" | "machine"; players: readonly LocalPlayerConfig[]; rows: number; columns: number }>;
+export type LocalBoardSelection = Readonly<{ kind: "classic"; rows: number; columns: number }> | Readonly<{ kind: "silhouette"; id: string; cells: readonly { row: number; column: number }[] }>;
+export type LocalConfig = Readonly<{ mode?: "local" | "machine"; players: readonly LocalPlayerConfig[]; board?: LocalBoardSelection; rows?: number; columns?: number }>;
 export type LocalSession = Readonly<{ config: LocalConfig; state: GameState }>;
 export type ActionFeedback = Readonly<{ kind: "none" | "move" | "capture" | "multi" | "invalid"; message: string }>;
+
+type CatalogTemplate = Readonly<{ id: string; rows: readonly string[] }>;
+export const SILHOUETTE_CATALOG = catalog.templates as readonly CatalogTemplate[];
+function assertCatalogTemplate(template: CatalogTemplate): void {
+  if (!template.rows.length || template.rows.some((row) => row.length !== template.rows[0].length || !/^[#.]+$/.test(row))) throw new Error("La máscara de silueta no es rectangular.");
+}
+export const silhouetteCells = (template: CatalogTemplate) => {
+  assertCatalogTemplate(template);
+  return template.rows.flatMap((row, r) => [...row].flatMap((value, column) => value === "#" ? [{ row: r, column }] : []));
+};
+export const silhouetteSelection = (id: string): LocalBoardSelection => {
+  const template = SILHOUETTE_CATALOG.find((candidate) => candidate.id === id);
+  if (!template) throw new RangeError("Silueta no catalogada.");
+  return { kind: "silhouette", id, cells: silhouetteCells(template) };
+};
+export const BOARD_SELECTIONS = [
+  { kind: "classic", id: "classic", label: "Clásico" },
+  ...SILHOUETTE_CATALOG.map(({ id }) => ({ kind: "silhouette" as const, id, label: id.replace("-", " ") })),
+] as const;
 
 export const MODES: readonly Readonly<{ id: GameMode; label: string; available: boolean; description: string }>[] = [
   { id: "machine", label: "Contra la máquina", available: true, description: "1 humano + 1–3 bots" },
@@ -22,7 +43,8 @@ export function validateLocalConfig(config: LocalConfig): string | null {
   if (bots.some((bot) => !bot.difficulty || !Number.isFinite(bot.seed))) return "Cada bot necesita dificultad y semilla válidas.";
   if (config.players.some((player) => !player.name.trim())) return "Cada jugador necesita un apodo.";
   if (new Set(config.players.map((player) => player.name.trim().toLocaleLowerCase())).size !== config.players.length) return "Los apodos deben ser diferentes.";
-  if (!Number.isInteger(config.rows) || !Number.isInteger(config.columns) || config.rows < 2 || config.rows > 8 || config.columns < 2 || config.columns > 8) return "El tablero debe tener entre 2 y 8 filas y columnas.";
+  const board = config.board ?? { kind: "classic" as const, rows: config.rows, columns: config.columns };
+  try { createBoardFromSelection(board as BoardSelection); } catch (error) { return error instanceof Error ? error.message : "La configuración del tablero no es válida."; }
   return null;
 }
 
@@ -32,7 +54,8 @@ export function createLocalSession(config: LocalConfig): LocalSession {
   const players: readonly Player[] = config.players.map(({ id, name, kind, difficulty, seed }) => kind === "automatic"
     ? { id, name: name.trim(), kind: "automatic", difficulty: difficulty!, seed: seed! }
     : { id, name: name.trim(), kind: "human" });
-  return { config, state: createGame(createRectangularBoard(config.rows, config.columns), players) };
+  const board = config.board ?? { kind: "classic" as const, rows: config.rows, columns: config.columns };
+  return { config, state: createGame(createBoardFromSelection(board as BoardSelection), players) };
 }
 
 export function selectEdge(session: LocalSession, edgeId: string): Readonly<{ session: LocalSession; feedback: ActionFeedback }> {

@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { createGame, applyMove, createRectangularBoard } from "@boxio/engine";
+import { createGame, applyMove, createRectangularBoard, prepareCellMask } from "@boxio/engine";
 
 class UpdateCoordinator {
   constructor() { this.pending = false; }
@@ -47,6 +47,7 @@ server.listen(0, "127.0.0.1");
 await once(server, "listening");
 const port = server.address().port;
 const base = `http://127.0.0.1:${port}`;
+const catalog = JSON.parse(await readFile(new URL("../assets/boards/silhouette-candidates.json", import.meta.url), "utf8"));
 
 // 1. Manifest & Asset Verification
 const manifest = await (await fetch(`${base}/manifest.webmanifest`)).json();
@@ -72,19 +73,21 @@ if (!worker.includes("CacheStorage") || !cache.assetGroups?.length) {
 }
 
 // 3. Headless Chromium Shell Render
-const browser = spawn("google-chrome", [
-  "--headless",
-  "--no-sandbox",
-  "--disable-gpu",
-  "--dump-dom",
-  `${base}/`,
-], { stdio: ["ignore", "pipe", "pipe"] });
-
-let output = "";
-browser.stdout.on("data", (chunk) => { output += chunk; });
-const [browserResult] = await once(browser, "close");
-if (browserResult !== 0 || !output.includes("Elige cómo jugar") || !output.includes("Multijugador local")) {
-  throw new Error("El shell de la PWA no se renderiza correctamente en Chromium");
+for (const viewport of ["360,640", "768,1024", "1280,800"]) {
+  const browser = spawn("google-chrome", [
+    "--headless",
+    "--no-sandbox",
+    "--disable-gpu",
+    `--window-size=${viewport}`,
+    "--dump-dom",
+    `${base}/`,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  let output = "";
+  browser.stdout.on("data", (chunk) => { output += chunk; });
+  const [browserResult] = await once(browser, "close");
+  if (browserResult !== 0 || !output.includes("Elige cómo jugar") || !output.includes("Multijugador local")) {
+    throw new Error(`El shell de la PWA no se renderiza correctamente en Chromium (${viewport})`);
+  }
 }
 
 // 4. Simulate Network Block & Offline Revisit
@@ -130,6 +133,20 @@ for (const playerCount of [2, 3, 4]) {
   }
 }
 
+// 7. Every approved special board uses the same offline engine contract.
+for (const template of catalog.templates) {
+  const cells = template.rows.flatMap((row, r) => [...row].flatMap((value, column) => value === "#" ? [{ row: r, column }] : []));
+  const board = prepareCellMask(cells);
+  let game = createGame(board, [{ id: "a", name: "A" }, { id: "b", name: "B" }]);
+  for (const edge of board.edges) {
+    if (game.status === "complete") break;
+    const move = applyMove(game, { playerId: game.currentPlayerId, edgeId: edge.id });
+    if (!move.accepted) throw new Error(`Movimiento legal rechazado en ${template.id}: ${edge.id}`);
+    game = move.state;
+  }
+  if (game.status !== "complete" || Object.values(game.scores).reduce((sum, score) => sum + score, 0) !== board.cells.length) throw new Error(`Silueta offline incompleta: ${template.id}`);
+}
+
 // 6. Non-Disruptive Update Coordination Verification
 const updateCoord = new UpdateCoordinator();
 updateCoord.notifyNewVersion();
@@ -148,5 +165,5 @@ if (updateCoord.updatePending) {
 
 server.close();
 console.log(
-  `PWA E2E PASS: manifest, ${manifest.icons.length} iconos reproducibles, ${cache.assetGroups.length} grupos de caché, shell Chromium, juego local offline (2-4 jugadores), rechazo de aristas inválidas y actualización no disruptiva verificados.`
+  `PWA E2E PASS: manifest, ${manifest.icons.length} iconos reproducibles, ${cache.assetGroups.length} grupos de caché, shell Chromium, juego local offline (2-4 jugadores), nueve siluetas, rechazo de aristas inválidas y actualización no disruptiva verificados.`
 );
