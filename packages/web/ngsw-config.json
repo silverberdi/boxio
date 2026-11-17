@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/@angular/service-worker/config/schema.json",
+  "index": "/index.html",
+  "assetGroups": [
+    {
+      "name": "app-shell",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "resources": { "files": ["/**", "!/ngsw.json"] }
+    },
+    {
+      "name": "local-catalog",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "resources": { "files": ["/assets/**"] }
+    }
+  ],
+  "navigationUrls": ["^\\/.*$", "!^\\/assets\\/.*$", "!^\\/.*\\.(?:map|json)$"]
+}
