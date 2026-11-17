@@ -98,23 +98,26 @@ import { UpdateCoordinator } from "./update-coordinator";
 
     <!-- Estado: Dentro de una sala -->
     <div *ngIf="onlineRoomId" class="online-active-room">
-      <div class="invitation-banner">
-        <div>
-          <span class="eyebrow">Código para invitar a tus amigos</span>
-          <strong class="invitation-code">{{ onlineInvitation }}</strong>
-        </div>
-        <button class="quiet copy-btn" (click)="copyInvitationCode()">{{ copyStatus || 'Copiar código' }}</button>
-      </div>
 
-      <p *ngIf="onlineConnection" class="connection-status" role="status" [class.connected]="onlineConnection.includes('Confirmado') || onlineConnection.includes('Conectado')">
-        {{ onlineConnection }}
-      </p>
-
-      <div *ngIf="onlineSnapshot" class="online-state">
-        <div class="room-info">
-          <span>Participantes: <strong>{{ onlineSnapshot.participants.length }}/4</strong></span>
-          <span>· Estado: <strong>{{ onlineSnapshot.status === 'lobby' ? 'Esperando jugadores' : (onlineSnapshot.status === 'active' ? 'En juego' : onlineSnapshot.status) }}</strong></span>
+      <!-- Vista 1: Lobby (esperando más jugadores) -->
+      <div *ngIf="onlineSnapshot?.status === 'lobby'">
+        <div class="invitation-banner">
+          <div>
+            <span class="eyebrow">Código para invitar a tus amigos</span>
+            <strong class="invitation-code">{{ onlineInvitation }}</strong>
+          </div>
+          <button class="quiet copy-btn" (click)="copyInvitationCode()">{{ copyStatus || 'Copiar código' }}</button>
         </div>
+
+        <p *ngIf="onlineConnection" class="connection-status" role="status" [class.connected]="onlineConnection.includes('Confirmado') || onlineConnection.includes('Conectado')">
+          {{ onlineConnection }}
+        </p>
+
+        <div class="room-info" style="margin: 14px 0 6px;">
+          <span>Participantes en sala: <strong>{{ onlineSnapshot.participants.length }}/4</strong></span>
+          <p class="muted" style="margin: 8px 0;"><small>Comparte el código con otro jugador. En cuanto se una, el tablero aparecerá automáticamente para ambos.</small></p>
+        </div>
+
         <div class="participants-list">
           <div *ngFor="let p of onlineSnapshot.participants" class="participant-badge" [class.current]="p.id === onlineParticipantId">
             <span class="color-dot" [style.background]="getParticipantColor(p.id)"></span>
@@ -124,24 +127,94 @@ import { UpdateCoordinator } from "./update-coordinator";
           </div>
         </div>
 
-        <div *ngIf="onlineSnapshot.game" class="online-board-wrapper">
-          <p class="turn-indicator">
-            Turno actual: <strong>{{ getParticipantName(onlineSnapshot.game.currentPlayerId) }}</strong>
-            <span *ngIf="isMyTurn()" class="my-turn-badge">¡Es tu turno!</span>
-          </p>
-          <div class="online-edges-grid">
-            <button *ngFor="let edge of onlineSnapshot.game.board.edges"
-              class="edge-btn"
-              [class.occupied]="onlineSnapshot.game.occupiedEdges.includes(edge.id)"
-              [disabled]="onlineSnapshot.game.occupiedEdges.includes(edge.id) || !isMyTurn()"
-              (click)="onlineMove(edge.id)">
-              {{ edge.id }}
-            </button>
-          </div>
-        </div>
+        <button class="quiet leave-btn" (click)="exitOnline()">Salir de la sala</button>
       </div>
 
-      <button class="quiet leave-btn" (click)="exitOnline()">Salir de la sala</button>
+      <!-- Vista 2: En juego (partida activa o completa) -->
+      <div *ngIf="onlineSnapshot?.game">
+        <div class="game-status" style="margin-bottom: 8px;">
+          <div>
+            <p class="eyebrow">Turno actual</p>
+            <h1 [style.color]="getParticipantColor(onlineSnapshot.game.currentPlayerId)">
+              {{ getParticipantName(onlineSnapshot.game.currentPlayerId) }}
+              <span *ngIf="isMyTurn()" class="my-turn-badge">¡Es tu turno!</span>
+            </h1>
+          </div>
+          <div class="scores" aria-label="Marcadores">
+            <div *ngFor="let p of onlineSnapshot.participants" class="score" [class.active]="p.id === onlineSnapshot.game.currentPlayerId">
+              <span class="color-dot" [style.background]="getParticipantColor(p.id)"></span>
+              <b>{{ p.name }}<span *ngIf="p.id === onlineParticipantId"> (Tú)</span></b>
+              <strong>{{ onlineSnapshot.game.scores[p.id] ?? 0 }}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="invitation-banner compact">
+          <div>
+            <span class="eyebrow" style="font-size: 11px;">Código de sala: </span>
+            <strong class="invitation-code" style="font-size: 16px;">{{ onlineInvitation }}</strong>
+          </div>
+          <button class="quiet copy-btn" style="min-height: 32px;" (click)="copyInvitationCode()">{{ copyStatus || 'Copiar código' }}</button>
+        </div>
+
+        <p *ngIf="onlineError" class="error" role="alert" style="margin: 6px 0;">{{ onlineError }}</p>
+
+        <div class="board-viewport">
+          <svg class="board" [attr.viewBox]="'-16 -16 ' + (onlineBoardWidth + 32) + ' ' + (onlineBoardHeight + 32)" role="img" aria-label="Tablero de juego online">
+            <g class="cells">
+              <rect *ngFor="let cell of onlineSnapshot.game.board.cells"
+                [attr.x]="cell.column * cellSize"
+                [attr.y]="cell.row * cellSize"
+                [attr.width]="cellSize"
+                [attr.height]="cellSize"
+                [class.claimed]="onlineSnapshot.game.cellOwners[cell.id]"
+                [style.fill]="onlineCellColor(cell.id)">
+              </rect>
+            </g>
+            <g class="edges">
+              <ng-container *ngFor="let edge of onlineSnapshot.game.board.edges">
+                <line class="edge-line"
+                  [class.occupied]="onlineSnapshot.game.occupiedEdges.includes(edge.id)"
+                  [class.hovered]="hoveredEdgeId === edge.id && !onlineSnapshot.game.occupiedEdges.includes(edge.id)"
+                  [style.stroke]="onlineEdgeLineColor(edge.id)"
+                  [style.stroke-width]="onlineEdgeLineWidth(edge.id)"
+                  [style.stroke-opacity]="onlineEdgeLineOpacity(edge.id)"
+                  [attr.x1]="edgeGeometry(edge).x1" [attr.y1]="edgeGeometry(edge).y1"
+                  [attr.x2]="edgeGeometry(edge).x2" [attr.y2]="edgeGeometry(edge).y2">
+                </line>
+                <line class="edge-hit"
+                  [class.occupied]="onlineSnapshot.game.occupiedEdges.includes(edge.id)"
+                  [style.cursor]="isMyTurn() && !onlineSnapshot.game.occupiedEdges.includes(edge.id) ? 'pointer' : 'default'"
+                  [attr.x1]="edgeGeometry(edge).x1" [attr.y1]="edgeGeometry(edge).y1"
+                  [attr.x2]="edgeGeometry(edge).x2" [attr.y2]="edgeGeometry(edge).y2"
+                  [attr.data-edge-id]="edge.id"
+                  (mouseenter)="hoveredEdgeId = edge.id"
+                  (mouseleave)="hoveredEdgeId = null"
+                  (click)="onlineMove(edge.id)">
+                </line>
+              </ng-container>
+            </g>
+            <g class="vertices">
+              <circle *ngFor="let v of onlineBoardVertices"
+                class="vertex-dot"
+                [attr.cx]="v.column * cellSize"
+                [attr.cy]="v.row * cellSize"
+                r="6">
+              </circle>
+            </g>
+          </svg>
+        </div>
+
+        <div *ngIf="onlineSnapshot.status === 'complete'" style="text-align: center; margin: 16px 0;">
+          <h2>¡Partida finalizada!</h2>
+          <p *ngIf="onlineSnapshot.result?.winners?.length">Ganador: <strong>{{ getParticipantName(onlineSnapshot.result.winners[0]) }}</strong></p>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+          <span class="connection-status" [class.connected]="onlineConnection.includes('Conectado')">{{ onlineConnection }}</span>
+          <button class="quiet leave-btn" (click)="exitOnline()">Salir de la sala</button>
+        </div>
+      </div>
     </div>
 
     <p *ngIf="onlineError" class="error" role="alert">{{ onlineError }}</p>
@@ -272,6 +345,7 @@ import { UpdateCoordinator } from "./update-coordinator";
     .brand img{width:132px}
     .brand span{font-size:12px;color:#286198}
     .panel{max-width:680px;margin:24px auto;padding:28px;background:#fff;border:3px solid #082c7c;border-radius:28px;box-shadow:0 10px 0 #82c8eb}
+    .panel.online-room{max-width:840px}
     .home{text-align:center}
     .hero-icon{width:72px}
     .muted{color:#42648c}
@@ -303,6 +377,7 @@ import { UpdateCoordinator } from "./update-coordinator";
     .field-label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600;color:#082c7c}
     .field-label input:focus{border-color:#1e88ff;outline:none}
     .invitation-banner{display:flex;justify-content:space-between;align-items:center;background:#e8f4fc;border:2px dashed #1e88ff;border-radius:14px;padding:12px 18px;margin:16px 0}
+    .invitation-banner.compact{padding:6px 14px;margin:8px 0;font-size:13px}
     .invitation-code{font-size:24px;letter-spacing:2px;color:#082c7c;font-family:monospace}
     .copy-btn{color:#1e88ff;font-weight:700;cursor:pointer}
     .participants-list{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
@@ -411,10 +486,48 @@ export class AppComponent {
 
   copyInvitationCode() {
     if (!this.onlineInvitation) return;
-    navigator.clipboard?.writeText(this.onlineInvitation).then(() => {
+    const text = this.onlineInvitation.trim();
+    const onSuccess = () => {
       this.copyStatus = "¡Copiado!";
-      setTimeout(() => (this.copyStatus = ""), 2500);
-    });
+      this.cdr.detectChanges();
+      setTimeout(() => {
+        this.copyStatus = "";
+        this.cdr.detectChanges();
+      }, 2500);
+    };
+
+    if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+        this.fallbackCopy(text, onSuccess);
+      });
+    } else {
+      this.fallbackCopy(text, onSuccess);
+    }
+  }
+
+  private fallbackCopy(text: string, onSuccess: () => void) {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "-9999px";
+      textarea.setAttribute("readonly", "");
+      document.body.appendChild(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (successful) {
+        onSuccess();
+      } else {
+        this.copyStatus = "Error al copiar";
+        this.cdr.detectChanges();
+      }
+    } catch {
+      this.copyStatus = "Error al copiar";
+      this.cdr.detectChanges();
+    }
   }
 
   exitOnline() {
@@ -433,7 +546,8 @@ export class AppComponent {
 
   getParticipantColor(participantId: string): string {
     const idx = (this.onlineSnapshot?.participants ?? []).findIndex((p: any) => p.id === participantId);
-    return idx >= 0 ? PLAYER_COLORS[idx % PLAYER_COLORS.length] : "#888";
+    const colorName = idx >= 0 ? PLAYER_COLORS[idx % PLAYER_COLORS.length] : "blue";
+    return this.colorValue(colorName);
   }
 
   getParticipantName(participantId: string): string {
@@ -443,6 +557,49 @@ export class AppComponent {
 
   isMyTurn(): boolean {
     return this.onlineSnapshot?.game?.currentPlayerId === this.onlineParticipantId;
+  }
+
+  get onlineBoardWidth(): number {
+    const cells = this.onlineSnapshot?.game?.board?.cells ?? [];
+    if (!cells.length) return 300;
+    return ((cells.reduce((max: number, cell: any) => Math.max(max, cell.column), 0)) + 1) * this.cellSize;
+  }
+
+  get onlineBoardHeight(): number {
+    const cells = this.onlineSnapshot?.game?.board?.cells ?? [];
+    if (!cells.length) return 300;
+    return ((cells.reduce((max: number, cell: any) => Math.max(max, cell.row), 0)) + 1) * this.cellSize;
+  }
+
+  get onlineBoardVertices(): readonly { row: number; column: number }[] {
+    return this.onlineSnapshot?.game?.board ? uniqueBoardVertices(this.onlineSnapshot.game.board) : [];
+  }
+
+  onlineCellColor(cellId: string): string {
+    const ownerId = this.onlineSnapshot?.game?.cellOwners?.[cellId];
+    return ownerId ? this.getParticipantColor(ownerId) : "transparent";
+  }
+
+  onlineEdgeLineColor(edgeId: string): string {
+    if (this.onlineSnapshot?.game?.occupiedEdges?.includes(edgeId)) {
+      return "#082c7c";
+    }
+    if (this.hoveredEdgeId === edgeId && this.isMyTurn()) {
+      return this.getParticipantColor(this.onlineParticipantId);
+    }
+    return "#c3e0f2";
+  }
+
+  onlineEdgeLineWidth(edgeId: string): number {
+    if (this.onlineSnapshot?.game?.occupiedEdges?.includes(edgeId)) return 6;
+    if (this.hoveredEdgeId === edgeId && this.isMyTurn()) return 6;
+    return 3;
+  }
+
+  onlineEdgeLineOpacity(edgeId: string): number {
+    if (this.onlineSnapshot?.game?.occupiedEdges?.includes(edgeId)) return 1;
+    if (this.hoveredEdgeId === edgeId && this.isMyTurn()) return 0.8;
+    return 0.45;
   }
 
   connectOnlineSocket() {
@@ -464,6 +621,7 @@ export class AppComponent {
         if (data.type === "ack" || data.type === "snapshot") {
           if (data.snapshot) {
             this.onlineSnapshot = data.snapshot;
+            try { this.playSound(data.completedCells?.length ? "capture" : "click"); } catch {}
             this.cdr.detectChanges();
           }
         }
@@ -563,6 +721,13 @@ export class AppComponent {
 
   async onlineMove(edgeId: string) {
     if (!this.onlineSnapshot || !this.onlineRoomId) return;
+    if (!this.isMyTurn()) {
+      this.onlineError = "Es el turno de " + this.getParticipantName(this.onlineSnapshot.game?.currentPlayerId);
+      this.cdr.detectChanges();
+      return;
+    }
+    if (this.onlineSnapshot.game?.occupiedEdges?.includes(edgeId)) return;
+
     try {
       const response = await fetch(`/api/rooms/${this.onlineRoomId}/commands`, {
         method: "POST",
@@ -578,8 +743,9 @@ export class AppComponent {
       });
       const payload = await response.json();
       if (response.ok) {
-        this.onlineSnapshot = payload.snapshot;
+        this.onlineSnapshot = payload.snapshot ?? this.onlineSnapshot;
         this.onlineError = "";
+        try { this.playSound(payload.completedCells?.length ? "capture" : "click"); } catch {}
       } else {
         this.onlineError = payload.code === "forbidden" ? "No es tu turno." : (payload.error ?? "La jugada fue rechazada por el servidor.");
       }
