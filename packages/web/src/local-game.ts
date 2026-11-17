@@ -45,7 +45,7 @@ export const BOARD_SELECTIONS = [
 export const MODES: readonly Readonly<{ id: GameMode; label: string; available: boolean; description: string }>[] = [
   { id: "machine", label: "Contra la máquina", available: true, description: "1 humano + 1–3 bots" },
   { id: "local", label: "Multijugador local", available: true, description: "2–4 personas" },
-  { id: "private", label: "Sala privada", available: false, description: "Próximamente" },
+  { id: "private", label: "Sala privada", available: true, description: "Invita hasta 4 personas" },
   { id: "public", label: "Partida pública", available: false, description: "Próximamente" },
 ];
 

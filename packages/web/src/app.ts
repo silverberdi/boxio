@@ -46,6 +46,24 @@ import { UpdateCoordinator } from "./update-coordinator";
     </div>
     <p class="scope-note">Las modalidades bloqueadas se habilitarán en próximas entregas.</p>
   </section>
+  <section *ngIf="screen === 'online'" class="panel online-room">
+    <button class="back" (click)="screen = 'home'">← Inicio</button>
+    <h1>Sala privada</h1>
+    <p class="muted">La invitación localiza la sala; el servidor confirma identidad, turno y puntuación.</p>
+    <label>Tu apodo <input [value]="onlineName" (input)="onlineName = $any($event.target).value" maxlength="18" aria-label="Apodo online"></label>
+    <button class="primary" (click)="createPrivateRoom()">Crear sala</button>
+    <label>Código de invitación <input [value]="onlineInvitation" (input)="onlineInvitation = $any($event.target).value" aria-label="Código de invitación"></label>
+    <button class="primary" (click)="joinPrivateRoom()">Entrar en sala</button>
+    <p role="status">{{ onlineConnection }}</p>
+    <p *ngIf="onlineError" class="error" role="alert">{{ onlineError }}</p>
+    <div *ngIf="onlineSnapshot" class="online-state">
+      <p>Participantes: {{ onlineSnapshot.participants.length }}/4 · Estado: {{ onlineSnapshot.status }}</p>
+      <p>Versión confirmada: {{ onlineSnapshot.version }} · Turno: {{ onlineSnapshot.game?.currentPlayerId }}</p>
+      <div class="online-edges" *ngIf="onlineSnapshot.game">
+        <button *ngFor="let edge of onlineSnapshot.game.board.edges" [disabled]="onlineSnapshot.game.occupiedEdges.includes(edge.id)" (click)="onlineMove(edge.id)">{{ edge.id }}</button>
+      </div>
+    </div>
+  </section>
   <section *ngIf="screen === 'setup'" class="panel setup">
     <button class="back" (click)="screen = 'home'">← Inicio</button>
     <h1>Prepara tu partida</h1>
@@ -227,7 +245,7 @@ import { UpdateCoordinator } from "./update-coordinator";
   `]
 })
 export class AppComponent {
-  screen: "home" | "setup" | "game" | "result" = "home";
+  screen: "home" | "setup" | "online" | "game" | "result" = "home";
   modes = MODES;
   soundCount = Object.keys(soundCatalog).length;
   playerCount = 2;
@@ -268,6 +286,14 @@ export class AppComponent {
   private pointers = new Map<number, { x: number; y: number }>();
   private audioContext: AudioContext | null = null;
   machineMode = false;
+  onlineName = "Jugador";
+  onlineInvitation = "";
+  onlineRoomId = "";
+  onlineParticipantId = "";
+  onlineCredential = "";
+  onlineSnapshot: any = null;
+  onlineError = "";
+  onlineConnection = "Sin conexión";
 
   hoveredEdgeId: string | null = null;
   isDrawing = false;
@@ -275,11 +301,44 @@ export class AppComponent {
   dragCurrentPoint: { x: number; y: number } | null = null;
 
   chooseMode(mode: GameMode) {
+    if (mode === "private") { this.onlineError = ""; this.screen = "online"; return; }
     if (mode === "local" || mode === "machine") {
       this.machineMode = mode === "machine";
       this.setPlayerCount(this.machineMode ? 2 : 2);
       this.screen = "setup";
     }
+  }
+
+  async createPrivateRoom() {
+    await this.privateRequest("/rooms", { name: this.onlineName, selection: { kind: "classic", rows: 2, columns: 2 } }, true);
+  }
+
+  async joinPrivateRoom() {
+    if (!this.onlineInvitation.trim()) { this.onlineError = "Escribe el código de invitación."; return; }
+    await this.privateRequest(`/rooms/${encodeURIComponent(this.onlineInvitation)}/join`, { name: this.onlineName, invitationCode: this.onlineInvitation }, false);
+  }
+
+  private async privateRequest(path: string, body: unknown, creating: boolean) {
+    try {
+      const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "No se pudo acceder a la sala.");
+      this.onlineRoomId = payload.roomId ?? this.onlineRoomId;
+      this.onlineParticipantId = payload.participantId;
+      this.onlineCredential = payload.reconnectCredential;
+      this.onlineSnapshot = payload.snapshot;
+      this.onlineInvitation = payload.invitationCode ?? this.onlineInvitation;
+      this.onlineConnection = "Confirmado por servidor";
+      this.onlineError = creating ? "Comparte este código: " + this.onlineInvitation : "Entrada confirmada.";
+    } catch (error) { this.onlineConnection = "Rechazado"; this.onlineError = error instanceof Error ? error.message : "No se pudo acceder a la sala."; }
+  }
+
+  async onlineMove(edgeId: string) {
+    if (!this.onlineSnapshot) return;
+    const response = await fetch(`/rooms/${this.onlineRoomId}/commands`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ protocolVersion: 1, commandId: crypto.randomUUID(), participantId: this.onlineParticipantId, credential: this.onlineCredential, version: this.onlineSnapshot.version, edgeId }) });
+    const payload = await response.json();
+    if (response.ok) this.onlineSnapshot = payload.snapshot;
+    else this.onlineError = payload.code === "forbidden" ? "No es tu turno." : "La jugada fue rechazada por el servidor.";
   }
 
   setPlayerCount(count: number) {
