@@ -94,7 +94,7 @@ export function uniqueBoardVertices(board: Board): readonly Vertex[] {
 export type GestureState = Readonly<{ active: boolean; moved: boolean; pointers: number; scale: number; x: number; y: number; startDistance: number; lastX: number; lastY: number }>;
 export const idleGesture: GestureState = { active: false, moved: false, pointers: 0, scale: 1, x: 0, y: 0, startDistance: 0, lastX: 0, lastY: 0 };
 export function beginGesture(x: number, y: number, pointers = 1, startDistance = 0): GestureState { return { active: true, moved: false, pointers, scale: 1, x, y, startDistance, lastX: x, lastY: y }; }
-export function updateGesture(start: GestureState, x: number, y: number, scale = 1, pointers = start.pointers): GestureState { const moved = start.moved || pointers > 1 || Math.abs(x - start.x) >= 8 || Math.abs(y - start.y) >= 8 || Math.abs(scale - 1) >= 0.03; return { ...start, moved, pointers, scale, lastX: x, lastY: y }; }
+export function updateGesture(start: GestureState, x: number, y: number, scale = 1, pointers = start.pointers, threshold = 8): GestureState { const moved = start.moved || pointers > 1 || Math.abs(x - start.x) >= threshold || Math.abs(y - start.y) >= threshold || Math.abs(scale - 1) >= 0.03; return { ...start, moved, pointers, scale, lastX: x, lastY: y }; }
 export function canSelectAfterGesture(gesture: GestureState): boolean { return gesture.active && !gesture.moved && gesture.pointers === 1; }
 
 export const VIEWPORT_CHECKS = [

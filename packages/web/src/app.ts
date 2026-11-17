@@ -77,7 +77,9 @@ import { UpdateCoordinator } from "./update-coordinator";
             <line class="edge-line"
               [class.occupied]="session.state.occupiedEdges.includes(edge.id)"
               [class.hovered]="hoveredEdgeId === edge.id && !session.state.occupiedEdges.includes(edge.id)"
-              [attr.stroke]="session.state.occupiedEdges.includes(edge.id) ? edgeOwnerColor(edge.id) : (hoveredEdgeId === edge.id ? colorValue(currentPlayerColor) : '#b8cee0')"
+              [style.stroke]="edgeLineColor(edge.id)"
+              [style.stroke-width]="edgeLineWidth(edge.id)"
+              [style.stroke-opacity]="edgeLineOpacity(edge.id)"
               [attr.x1]="edgeGeometry(edge).x1" [attr.y1]="edgeGeometry(edge).y1"
               [attr.x2]="edgeGeometry(edge).x2" [attr.y2]="edgeGeometry(edge).y2">
             </line>
@@ -98,7 +100,7 @@ import { UpdateCoordinator } from "./update-coordinator";
             [attr.y1]="dragStartVertex.row * cellSize"
             [attr.x2]="dragCurrentPoint.x"
             [attr.y2]="dragCurrentPoint.y"
-            [attr.stroke]="colorValue(currentPlayerColor)">
+            [style.stroke]="colorValue(currentPlayerColor)">
           </line>
         </g>
         <g class="vertices">
@@ -119,7 +121,7 @@ import { UpdateCoordinator } from "./update-coordinator";
         </g>
       </svg>
     </div>
-    <p class="hint">Haz clic en una arista o arrastra entre dos puntos para trazar. Arrastra el fondo para moverte; pellizca para zoom.</p>
+    <p class="hint">En móvil: toca la línea deseada con precisión. En PC: haz clic o dibuja arrastrando entre puntos.</p>
     <button class="quiet" (click)="screen = 'home'; session = null">Salir de la partida</button>
   </section>
   <section *ngIf="screen === 'result' && session" class="panel result">
@@ -174,7 +176,7 @@ import { UpdateCoordinator } from "./update-coordinator";
     .eyebrow{font-size:12px;margin:0;color:#42648c}
     .game-status h1{margin:3px 0;font-size:26px}
     .scores{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-    .score{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:4px;background:#fff;border:2px solid transparent;border-radius:12px;padding:6px 8px;min-height:44px;box-sizing:border-box}
+    .score{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px;background:#fff;border:2px solid transparent;border-radius:12px;padding:6px 10px;min-height:44px;box-sizing:border-box}
     .score.active{border-color:#1e88ff}
     .score strong{font-size:20px}
     .feedback{min-height:24px;margin:6px 0;color:#286198}
@@ -184,10 +186,8 @@ import { UpdateCoordinator } from "./update-coordinator";
     .board{width:min(92vw,780px);height:min(62vh,620px);overflow:visible;transform-origin:center;transition:transform .08s ease}
     .cells rect{fill:#fff;stroke:#9acbe4;stroke-width:2}
     .cells rect.claimed{fill-opacity:.62}
-    .edge-line{stroke:#b8cee0;stroke-width:7;stroke-linecap:round;transition:stroke .12s ease, stroke-width .12s ease, opacity .12s ease}
-    .edge-line.occupied{stroke-width:8}
-    .edge-line.hovered{stroke-width:10;stroke-opacity:.75}
-    .edge-hit{stroke:transparent;stroke-width:38;stroke-linecap:round;cursor:pointer}
+    .edge-line{stroke-linecap:round;transition:stroke .15s ease, stroke-width .15s ease}
+    .edge-hit{stroke:transparent;stroke-width:48;stroke-linecap:round;cursor:pointer}
     .edge-hit.occupied{cursor:default}
     .vertex-hit{fill:transparent;cursor:pointer}
     .vertex-dot{fill:#082c7c;transition:r .15s ease, fill .15s ease;pointer-events:none}
@@ -215,8 +215,12 @@ export class AppComponent {
   constructor(private readonly swUpdate: SwUpdate) {
     if (swUpdate.isEnabled) {
       swUpdate.versionUpdates.subscribe((event) => {
-        if (event.type === "VERSION_READY") this.updates.notifyNewVersion();
+        if (event.type === "VERSION_READY") {
+          this.updates.notifyNewVersion();
+          this.swUpdate.activateUpdate().then(() => location.reload());
+        }
       });
+      swUpdate.checkForUpdate();
     }
   }
 
@@ -303,7 +307,13 @@ export class AppComponent {
   }
 
   colorValue(color: string) {
-    return ({ blue: "#1e88ff", yellow: "#ffc72c", coral: "#ff5a6b", green: "#34d26a", white: "#fff" } as Record<string, string>)[color] ?? "#082c7c";
+    return ({
+      blue: "#1e88ff",
+      yellow: "#ffb800",
+      coral: "#ff4757",
+      green: "#2ed573",
+      white: "#ffffff"
+    } as Record<string, string>)[color] ?? "#082c7c";
   }
 
   cellColor(cellId: string) {
@@ -311,11 +321,30 @@ export class AppComponent {
     return this.colorValue(this.session?.config.players.find((p) => p.id === owner)?.color ?? "white");
   }
 
-  edgeOwnerColor(edgeId: string): string {
-    const ownerId = this.session?.edgeOwners?.[edgeId];
-    if (!ownerId) return "#b8cee0";
-    const player = this.session?.config.players.find((p) => p.id === ownerId);
-    return this.colorValue(player?.color ?? "blue");
+  edgeLineColor(edgeId: string): string {
+    if (this.session?.state.occupiedEdges.includes(edgeId)) {
+      const ownerId = this.session?.edgeOwners?.[edgeId];
+      if (ownerId) {
+        const player = this.session?.config.players.find((p) => p.id === ownerId);
+        if (player) return this.colorValue(player.color);
+      }
+      return "#082c7c";
+    }
+    if (this.hoveredEdgeId === edgeId) {
+      return this.colorValue(this.currentPlayerColor);
+    }
+    return "#b8cee0";
+  }
+
+  edgeLineWidth(edgeId: string): string {
+    if (this.session?.state.occupiedEdges.includes(edgeId)) return "9px";
+    if (this.hoveredEdgeId === edgeId) return "10px";
+    return "6px";
+  }
+
+  edgeLineOpacity(edgeId: string): string {
+    if (this.hoveredEdgeId === edgeId && !this.session?.state.occupiedEdges.includes(edgeId)) return "0.75";
+    return "1";
   }
 
   onEdgeHover(edgeId: string) {
@@ -353,7 +382,9 @@ export class AppComponent {
     }
   }
 
+  /** PC Mouse Only: Drag-to-draw */
   startDraw(v: { row: number; column: number }, event: PointerEvent) {
+    if (event.pointerType !== "mouse") return; // Touch on mobile is reserved for tap & pan
     if (this.session?.state.status === "complete") return;
     const currentParticipant = this.session?.state.players.find((p) => p.id === this.session?.state.currentPlayerId);
     if (currentParticipant?.kind === "automatic") return;
@@ -402,6 +433,41 @@ export class AppComponent {
     }
   }
 
+  findClosestAvailableEdge(point: { x: number; y: number }, maxDistance: number): string | null {
+    if (!this.session) return null;
+    let bestEdgeId: string | null = null;
+    let minDistance = maxDistance;
+
+    for (const edge of this.session.state.board.edges) {
+      if (this.session.state.occupiedEdges.includes(edge.id)) continue;
+      const geom = edgeGeometry(edge, this.cellSize);
+      let dist: number;
+      if (geom.y1 === geom.y2) {
+        const minX = Math.min(geom.x1, geom.x2);
+        const maxX = Math.max(geom.x1, geom.x2);
+        if (point.x >= minX - 12 && point.x <= maxX + 12) {
+          dist = Math.abs(point.y - geom.y1);
+        } else {
+          dist = Math.min(Math.hypot(point.x - minX, point.y - geom.y1), Math.hypot(point.x - maxX, point.y - geom.y1));
+        }
+      } else {
+        const minY = Math.min(geom.y1, geom.y2);
+        const maxY = Math.max(geom.y1, geom.y2);
+        if (point.y >= minY - 12 && point.y <= maxY + 12) {
+          dist = Math.abs(point.x - geom.x1);
+        } else {
+          dist = Math.min(Math.hypot(point.x - geom.x1, point.y - minY), Math.hypot(point.x - geom.x1, point.y - maxY));
+        }
+      }
+
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestEdgeId = edge.id;
+      }
+    }
+    return bestEdgeId;
+  }
+
   private finishIfComplete() {
     if (this.session?.state.status === "complete") {
       this.playSound(this.session.state.winners.length > 1 ? "tie" : "victory");
@@ -411,7 +477,6 @@ export class AppComponent {
 
   pointerDown(event: PointerEvent) {
     if (this.isDrawing) return;
-    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
     this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (this.pointers.size === 1) {
       this.gesture = beginGesture(event.clientX, event.clientY);
@@ -437,7 +502,8 @@ export class AppComponent {
     if (!previous) return;
     this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (this.pointers.size === 1) {
-      this.gesture = updateGesture(this.gesture, event.clientX, event.clientY);
+      const threshold = event.pointerType === "touch" ? 22 : 8;
+      this.gesture = updateGesture(this.gesture, event.clientX, event.clientY, 1, 1, threshold);
       if (this.gesture.moved) {
         this.panX += event.clientX - previous.x;
         this.panY += event.clientY - previous.y;
@@ -488,9 +554,21 @@ export class AppComponent {
 
     const shouldSelect = this.pointers.size === 1 && canSelectAfterGesture(this.gesture);
     const target = event.target as SVGElement;
-    const edgeId = target?.getAttribute?.("data-edge-id");
+    let edgeId = target?.getAttribute?.("data-edge-id");
+
+    // Precision fallback on mobile/touch if target was missed by a few pixels:
+    if (shouldSelect && !edgeId && this.session) {
+      const svg = (event.currentTarget as HTMLElement).querySelector("svg") as SVGSVGElement | null;
+      if (svg) {
+        const pt = this.toSvgCoordinates(svg, event.clientX, event.clientY);
+        edgeId = this.findClosestAvailableEdge(pt, this.cellSize * 0.45);
+      }
+    }
+
     this.pointers.delete(event.pointerId);
-    if (shouldSelect && edgeId) this.tapEdge(edgeId);
+    if (shouldSelect && edgeId) {
+      this.tapEdge(edgeId);
+    }
     this.gesture = idleGesture;
   }
 
