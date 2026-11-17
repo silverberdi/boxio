@@ -1,0 +1,15 @@
+{
+  "name": "Boxio — Puntos y Cajas",
+  "short_name": "Boxio",
+  "description": "Juego local de Puntos y Cajas para 2–4 personas.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#bde8ff",
+  "theme_color": "#0756d5",
+  "lang": "es",
+  "icons": [
+    { "src": "icons/boxio-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/boxio-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

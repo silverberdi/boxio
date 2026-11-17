@@ -2,7 +2,21 @@
   "name": "@boxio/web",
   "version": "0.1.0",
   "private": true,
-  "scripts": { "build": "ng build", "test": "ng build --configuration production && vitest run" },
-  "dependencies": { "@angular/common": "21.2.26", "@angular/compiler": "21.2.26", "@angular/core": "21.2.26", "@angular/platform-browser": "21.2.26", "@boxio/engine": "0.1.0", "rxjs": "7.8.2", "zone.js": "0.15.1" },
-  "devDependencies": { "vitest": "4.1.12" }
+  "scripts": {
+    "build": "ng build",
+    "test": "ng build --configuration production && vitest run"
+  },
+  "dependencies": {
+    "@angular/common": "21.2.26",
+    "@angular/compiler": "21.2.26",
+    "@angular/core": "21.2.26",
+    "@angular/platform-browser": "21.2.26",
+    "@angular/service-worker": "21.2.26",
+    "@boxio/engine": "0.1.0",
+    "rxjs": "7.8.2",
+    "zone.js": "0.15.1"
+  },
+  "devDependencies": {
+    "vitest": "4.1.12"
+  }
 }

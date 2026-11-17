@@ -6,7 +6,8 @@
     "install:clean": "npm ci",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run build && npm run test --workspaces --if-present",
-    "check:assets": "node scripts/check-assets.mjs",
+    "check:assets": "node scripts/generate-pwa-icons.mjs && node scripts/check-assets.mjs",
+    "test:pwa:e2e": "npm run build --workspace @boxio/web -- --configuration production && node scripts/pwa-e2e.mjs",
     "diagnostics": "node scripts/diagnostics.mjs"
   },
   "engines": { "node": ">=22.22.1 <23", "npm": ">=9.2.0 <10" },
