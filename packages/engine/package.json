@@ -1,0 +1,9 @@
+{
+  "name": "@boxio/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc -p tsconfig.json", "test": "vitest run" },
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "require": "./dist/index.js", "default": "./dist/index.js" } },
+  "devDependencies": { "vitest": "4.1.12" }
+}
