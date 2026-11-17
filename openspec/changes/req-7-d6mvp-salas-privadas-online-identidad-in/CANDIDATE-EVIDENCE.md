@@ -9,5 +9,5 @@
   - Migración limpia (`001_private_rooms.sql`): creación de `private_rooms`, `private_room_participants`, `private_room_commands`, índices de unicidad y trigger transaccional con `pg_advisory_xact_lock`.
   - Rollback (`downgrade()`): eliminación limpia de triggers, funciones y tablas sin dejar artefactos huérfanos.
   - Idempotencia: re-ejecución exitosa de la migración sin colisiones.
-- Evidencia funcional: todas las 17 tareas de `tasks.md` (secciones 1 a 5) implementadas y verificadas contra los requisitos de `private-online-rooms`.
+- Evidencia funcional: las 19 tareas de `tasks.md` (secciones 1 a 5) están implementadas y verificadas contra los requisitos de `private-online-rooms`.
 - Alcance excluido respetado: chat, cuentas obligatorias, perfiles, rankings, tiendas, Redis, Kafka, microservicios, hosting obligatorio, sustitución por bot y assets externos.
