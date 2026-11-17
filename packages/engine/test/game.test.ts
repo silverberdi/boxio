@@ -1,17 +1,53 @@
 import { describe, expect, it } from "vitest";
-import { applyMove, createBoard, createGame } from "../src/index.js";
+import { applyMove, createBoard, createGame, createRectangularBoard, prepareCellMask, validateDimensions } from "../src/index.js";
 
 const players = [{ id: "a", name: "A" }, { id: "b", name: "B" }];
 const board = createBoard([{ row: 0, column: 0 }]);
 const moves = (state: ReturnType<typeof createGame>, ids: string[]) => ids.reduce((s, edgeId) => applyMove(s, { playerId: s.currentPlayerId, edgeId }).state, state);
 
 describe("game contracts", () => {
+  it("validates rectangular boundaries and rejects invalid dimensions", () => {
+    expect(validateDimensions(2, 2)).toEqual({ rows: 2, columns: 2 });
+    expect(createRectangularBoard(2, 2).cells).toHaveLength(4);
+    expect(createRectangularBoard(8, 8).cells).toHaveLength(64);
+    for (const value of [1, 9, 2.5, Infinity, NaN, "2", null]) {
+      expect(() => createRectangularBoard(value, 2)).toThrow();
+      expect(() => createRectangularBoard(2, value)).toThrow();
+    }
+  });
+
+  it("builds deterministic rectangular topology with deduplicated edges", () => {
+    const board = createRectangularBoard(2, 3);
+    expect(board.cells).toHaveLength(6);
+    expect(board.edges).toHaveLength(17);
+    expect(new Set(board.edges.map((edge) => edge.id)).size).toBe(17);
+    expect(board.cells.every((cell) => cell.edges.length === 4)).toBe(true);
+    expect(createRectangularBoard(2, 3)).toEqual(createRectangularBoard(2, 3));
+  });
+
+  it("prepares square masks, including holes, with the same topology algorithm", () => {
+    const mask = prepareCellMask([{ row: 0, column: 0 }, { row: 0, column: 2 }, { row: 1, column: 0 }, { row: 1, column: 2 }]);
+    expect(mask.cells.map((cell) => cell.id)).toEqual(["0,0", "0,2", "1,0", "1,2"]);
+    expect(mask.cells.every((cell) => cell.edges.length === 4)).toBe(true);
+    expect(() => prepareCellMask([])).toThrow();
+    expect(() => prepareCellMask([{ row: 0.5, column: 0 }])).toThrow();
+    expect(() => prepareCellMask([{ row: 0, column: 0 }, { row: 0, column: 0 }])).toThrow();
+  });
+
   it("rejects unknown and duplicate edges without mutation", () => {
     const state = createGame(board, players);
     expect(applyMove(state, { playerId: "a", edgeId: "missing" }).accepted).toBe(false);
     const first = applyMove(state, { playerId: "a", edgeId: board.edges[0].id });
     const duplicate = applyMove(first.state, { playerId: first.state.currentPlayerId, edgeId: board.edges[0].id });
     expect(duplicate.accepted).toBe(false); expect(duplicate.state).toBe(first.state);
+  });
+
+  it("rejects a move from the wrong participant without mutation", () => {
+    const state = createGame(board, players);
+    const before = JSON.stringify(state);
+    const result = applyMove(state, { playerId: "b", edgeId: board.edges[0].id });
+    expect(result).toMatchObject({ accepted: false, reason: "wrong-turn" });
+    expect(JSON.stringify(result.state)).toBe(before);
   });
   it("awards one square and preserves the capturing turn", () => {
     const state = moves(createGame(board, players), board.edges.slice(0, 3).map((e) => e.id));
@@ -35,6 +71,7 @@ describe("game contracts", () => {
     const second = tiedBoard.cells[1].edges;
     for (const edgeId of second) state = applyMove(state, { playerId: state.currentPlayerId, edgeId }).state;
     expect(state.status).toBe("complete"); expect(state.winners).toEqual(["a", "b"]); expect(Object.values(state.scores).reduce((a, b) => a + b, 0)).toBe(2);
+    expect(applyMove(state, { playerId: state.currentPlayerId, edgeId: tiedBoard.edges[0].id }).reason).toBe("game-complete");
   });
   it("rejects duplicate cells and retains square-only topology", () => {
     expect(() => createBoard([{ row: 0, column: 0 }, { row: 0, column: 0 }])).toThrow();
