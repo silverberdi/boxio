@@ -7,12 +7,18 @@ export type Edge = Readonly<{ id: EdgeId; a: Vertex; b: Vertex }>;
 export type SquareCell = Readonly<{ id: CellId; row: number; column: number; edges: readonly [EdgeId, EdgeId, EdgeId, EdgeId] }>;
 export type Board = Readonly<{ cells: readonly SquareCell[]; edges: readonly Edge[] }>;
 export type BoardDimensions = Readonly<{ rows: number; columns: number }>;
-export type Player = Readonly<{ id: PlayerId; name: string }>;
+export type BotDifficulty = "easy" | "medium" | "hard";
+export type HumanParticipant = Readonly<{ id: PlayerId; name: string; kind?: "human" }>;
+export type AutomaticParticipant = Readonly<{ id: PlayerId; name: string; kind: "automatic"; difficulty: BotDifficulty; seed: number }>;
+export type Player = HumanParticipant | AutomaticParticipant;
+export type Participant = Player;
 export type GameStatus = "active" | "complete";
 export type GameState = Readonly<{ board: Board; players: readonly Player[]; occupiedEdges: readonly EdgeId[]; cellOwners: Readonly<Record<CellId, PlayerId>>; scores: Readonly<Record<PlayerId, number>>; currentPlayerId: PlayerId; status: GameStatus; winners: readonly PlayerId[] }>;
 export type Move = Readonly<{ playerId: PlayerId; edgeId: EdgeId }>;
 export type MoveRejectionReason = "unknown-edge" | "occupied-edge" | "wrong-turn" | "game-complete";
 export type MoveResult = Readonly<{ accepted: boolean; reason?: MoveRejectionReason; state: GameState; completedCells: readonly CellId[] }>;
+
+export type BotDecisionDifficulty = BotDifficulty;
 
 const vertexKey = (v: Vertex) => `${v.row},${v.column}`;
 const cellKey = (cell: CellCoordinate) => `${cell.row},${cell.column}`;
@@ -81,6 +87,96 @@ export function createGame(board: Board, players: readonly Player[]): GameState 
   if (players.length < 2) throw new Error("At least two players are required");
   if (new Set(players.map((p) => p.id)).size !== players.length) throw new Error("Player IDs must be unique");
   return { board, players: players.map((p) => ({ ...p })), occupiedEdges: [], cellOwners: {}, scores: Object.fromEntries(players.map((p) => [p.id, 0])), currentPlayerId: players[0].id, status: "active", winners: [] };
+}
+
+function canonicalEdges(state: GameState): readonly EdgeId[] {
+  const occupied = new Set(state.occupiedEdges);
+  return state.board.edges.map((edge) => edge.id).filter((id) => !occupied.has(id)).sort();
+}
+
+function randomUnit(seed: number): number {
+  let value = (Math.trunc(seed) >>> 0) || 0x9e3779b9;
+  value ^= value << 13; value ^= value >>> 17; value ^= value << 5;
+  return (value >>> 0) / 0x100000000;
+}
+
+function nextSeed(seed: number, index: number): number {
+  return (Math.trunc(seed) + Math.imul(index + 1, 0x45d9f3b)) | 0;
+}
+
+function immediateCaptures(state: GameState, edges = canonicalEdges(state)): readonly EdgeId[] {
+  const occupied = new Set(state.occupiedEdges);
+  return edges.filter((edgeId) => state.board.cells.some((cell) => cell.edges.includes(edgeId) && cell.edges.every((candidate) => occupied.has(candidate) || candidate === edgeId)));
+}
+
+function exposesCapture(state: GameState, edgeId: EdgeId): boolean {
+  const move = applyMove(state, { playerId: state.currentPlayerId, edgeId });
+  return move.accepted && immediateCaptures(move.state).length > 0;
+}
+
+function easyDecision(state: GameState, seed: number): EdgeId {
+  const legal = canonicalEdges(state);
+  if (!legal.length) throw new Error("No legal bot move exists");
+  const captures = immediateCaptures(state, legal);
+  const sample = randomUnit(seed);
+  const chosen = captures.length && sample < 0.2 ? captures : legal;
+  return chosen[Math.floor(randomUnit(nextSeed(seed, 1)) * chosen.length)];
+}
+
+function mediumDecision(state: GameState, seed: number): EdgeId {
+  const legal = canonicalEdges(state);
+  if (!legal.length) throw new Error("No legal bot move exists");
+  const captures = immediateCaptures(state, legal);
+  if (captures.length) return captures[Math.floor(randomUnit(seed) * captures.length)];
+  const safe = legal.filter((edgeId) => !exposesCapture(state, edgeId));
+  const candidates = safe.length ? safe : legal;
+  return candidates[Math.floor(randomUnit(seed) * candidates.length)];
+}
+
+function hardScore(state: GameState, edgeId: EdgeId, depth: number, memo: Map<string, number>): number {
+  const key = `${state.occupiedEdges.join(",")}|${state.currentPlayerId}|${depth}`;
+  const cached = memo.get(`${key}|${edgeId}`);
+  if (cached !== undefined) return cached;
+  const result = applyMove(state, { playerId: state.currentPlayerId, edgeId });
+  if (!result.accepted) return -Infinity;
+  const immediate = result.completedCells.length;
+  if (!immediate || depth <= 0 || result.state.status === "complete") return immediate * 100 - (exposesCapture(state, edgeId) ? 1 : 0);
+  // A chain ends as soon as the capture does not continue; never search a full game tree.
+  const next = immediateCaptures(result.state);
+  const continuation = next.length ? Math.max(...next.map((candidate) => hardScore(result.state, candidate, depth - 1, memo))) : 0;
+  const score = immediate * 100 + continuation - (exposesCapture(state, edgeId) ? 1 : 0);
+  memo.set(`${key}|${edgeId}`, score);
+  return score;
+}
+
+function hardDecision(state: GameState, seed: number): EdgeId {
+  const legal = canonicalEdges(state);
+  if (!legal.length) throw new Error("No legal bot move exists");
+  // Opening play has no capture chain to explore; avoid gifts in one linear pass.
+  if (!immediateCaptures(state).length) {
+    const safe = legal.filter((edgeId) => !exposesCapture(state, edgeId));
+    return (safe.length ? safe : legal)[0];
+  }
+  const memo = new Map<string, number>();
+  const depth = Math.min(6, legal.length);
+  return legal.reduce((best, edgeId) => {
+    const score = hardScore(state, edgeId, depth, memo);
+    const bestScore = hardScore(state, best, depth, memo);
+    return score > bestScore ? edgeId : score === bestScore && edgeId < best ? edgeId : best;
+  }, legal[0]);
+}
+
+/** Pure, serializable bot boundary. The core remains the only move authority. */
+export function chooseBotMove(state: GameState, difficulty: BotDecisionDifficulty, seed: number): EdgeId {
+  if (state.status === "complete") throw new Error("Cannot choose a move for a complete game");
+  if (!Number.isFinite(seed)) throw new TypeError("Bot seed must be finite");
+  if (difficulty === "easy") return easyDecision(state, seed);
+  if (difficulty === "medium") return mediumDecision(state, seed);
+  return hardDecision(state, seed);
+}
+
+export function isAutomaticParticipant(player: Player): player is AutomaticParticipant {
+  return player.kind === "automatic";
 }
 
 function rejected(state: GameState, reason: MoveRejectionReason): MoveResult {

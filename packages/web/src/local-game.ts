@@ -1,21 +1,25 @@
-import { applyMove, createGame, createRectangularBoard, type Board, type Edge, type GameState, type Player } from "@boxio/engine";
+import { applyMove, chooseBotMove, createGame, createRectangularBoard, isAutomaticParticipant, type Board, type Edge, type BotDifficulty, type GameState, type Player } from "../../engine/src/index.js";
 
 export const PLAYER_COLORS = ["blue", "yellow", "coral", "green"] as const;
 export type PlayerColor = (typeof PLAYER_COLORS)[number];
 export type GameMode = "machine" | "local" | "private" | "public";
-export type LocalConfig = Readonly<{ players: readonly Readonly<{ id: string; name: string; color: PlayerColor }>[]; rows: number; columns: number }>;
+export type LocalPlayerConfig = Readonly<{ id: string; name: string; color: PlayerColor; kind?: "human" | "automatic"; difficulty?: BotDifficulty; seed?: number }>;
+export type LocalConfig = Readonly<{ mode?: "local" | "machine"; players: readonly LocalPlayerConfig[]; rows: number; columns: number }>;
 export type LocalSession = Readonly<{ config: LocalConfig; state: GameState }>;
 export type ActionFeedback = Readonly<{ kind: "none" | "move" | "capture" | "multi" | "invalid"; message: string }>;
 
 export const MODES: readonly Readonly<{ id: GameMode; label: string; available: boolean; description: string }>[] = [
-  { id: "machine", label: "Contra la máquina", available: false, description: "Próximamente" },
+  { id: "machine", label: "Contra la máquina", available: true, description: "1 humano + 1–3 bots" },
   { id: "local", label: "Multijugador local", available: true, description: "2–4 personas" },
   { id: "private", label: "Sala privada", available: false, description: "Próximamente" },
   { id: "public", label: "Partida pública", available: false, description: "Próximamente" },
 ];
 
 export function validateLocalConfig(config: LocalConfig): string | null {
+  const bots = config.players.filter((player) => player.kind === "automatic");
+  if (config.mode === "machine" && (bots.length < 1 || bots.length > 3 || config.players.filter((player) => player.kind !== "automatic").length !== 1)) return "La partida contra máquina necesita un humano y entre 1 y 3 bots.";
   if (config.players.length < 2 || config.players.length > 4) return "Elige entre 2 y 4 jugadores.";
+  if (bots.some((bot) => !bot.difficulty || !Number.isFinite(bot.seed))) return "Cada bot necesita dificultad y semilla válidas.";
   if (config.players.some((player) => !player.name.trim())) return "Cada jugador necesita un apodo.";
   if (new Set(config.players.map((player) => player.name.trim().toLocaleLowerCase())).size !== config.players.length) return "Los apodos deben ser diferentes.";
   if (!Number.isInteger(config.rows) || !Number.isInteger(config.columns) || config.rows < 2 || config.rows > 8 || config.columns < 2 || config.columns > 8) return "El tablero debe tener entre 2 y 8 filas y columnas.";
@@ -25,7 +29,9 @@ export function validateLocalConfig(config: LocalConfig): string | null {
 export function createLocalSession(config: LocalConfig): LocalSession {
   const error = validateLocalConfig(config);
   if (error) throw new RangeError(error);
-  const players: readonly Player[] = config.players.map(({ id, name }) => ({ id, name: name.trim() }));
+  const players: readonly Player[] = config.players.map(({ id, name, kind, difficulty, seed }) => kind === "automatic"
+    ? { id, name: name.trim(), kind: "automatic", difficulty: difficulty!, seed: seed! }
+    : { id, name: name.trim(), kind: "human" });
   return { config, state: createGame(createRectangularBoard(config.rows, config.columns), players) };
 }
 
@@ -38,6 +44,23 @@ export function selectEdge(session: LocalSession, edgeId: string): Readonly<{ se
   const count = result.completedCells.length;
   const feedback: ActionFeedback = count > 1 ? { kind: "multi", message: `¡Conquista doble! +${count} puntos y sigues jugando.` } : count === 1 ? { kind: "capture", message: "¡Cuadro conquistado! Sigues jugando." } : { kind: "move", message: "Turno del siguiente jugador." };
   return { session: { ...session, state: result.state }, feedback };
+}
+
+/** Runs only automatic turns, routing every move through applyMove. */
+export function runAutomaticTurns(session: LocalSession): Readonly<{ session: LocalSession; feedback: ActionFeedback }> {
+  let current = session;
+  let feedback: ActionFeedback = { kind: "none", message: "" };
+  const limit = current.state.board.edges.length + 1;
+  for (let step = 0; step < limit && current.state.status !== "complete"; step += 1) {
+    const participant = current.state.players.find((player) => player.id === current.state.currentPlayerId);
+    if (!participant || !isAutomaticParticipant(participant)) break;
+    const edgeId = chooseBotMove(current.state, participant.difficulty, participant.seed);
+    const result = selectEdge(current, edgeId);
+    if (result.feedback.kind === "invalid") throw new Error("Automatic decision produced an illegal edge");
+    current = result.session;
+    feedback = result.feedback;
+  }
+  return { session: current, feedback };
 }
 
 export function boardExtent(board: Board): Readonly<{ width: number; height: number }> {

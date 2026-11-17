@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { beginGesture, canSelectAfterGesture, createLocalSession, selectEdge, updateGesture, validateLocalConfig, VIEWPORT_CHECKS } from "./local-game";
+import { beginGesture, canSelectAfterGesture, createLocalSession, runAutomaticTurns, selectEdge, updateGesture, validateLocalConfig, VIEWPORT_CHECKS } from "./local-game";
 
 const players = (count: number) => Array.from({ length: count }, (_, i) => ({ id: `p${i}`, name: `P${i}`, color: (["blue", "yellow", "coral", "green"] as const)[i] }));
 
@@ -58,5 +58,26 @@ describe("local-game UI boundary", () => {
     expect(result.feedback.kind).toBe("multi");
     expect(Object.values(result.session.state.scores).reduce((sum, score) => sum + score, 0) - beforeScore).toBe(2);
     expect(result.session.state.currentPlayerId).toBe(beforeTurn);
+  });
+
+  it("accepts one human with one to three configured bots and rejects invalid machine counts", () => {
+    const human = { id: "human", name: "Tú", color: "blue" as const };
+    const bot = (id: string) => ({ id, name: id, color: "yellow" as const, kind: "automatic" as const, difficulty: "easy" as const, seed: 11 });
+    expect(validateLocalConfig({ mode: "machine", players: [human, bot("b1")], rows: 2, columns: 2 })).toBeNull();
+    expect(validateLocalConfig({ mode: "machine", players: [human, bot("b1"), bot("b2"), bot("b3")], rows: 2, columns: 2 })).toBeNull();
+    expect(validateLocalConfig({ mode: "machine", players: [human], rows: 2, columns: 2 })).toContain("humano");
+    expect(validateLocalConfig({ mode: "machine", players: [bot("b1"), bot("b2")], rows: 2, columns: 2 })).toContain("humano");
+  });
+
+  it("runs bot turns offline through the canonical move path without a turn loop", () => {
+    const session = createLocalSession({ mode: "machine", players: [
+      { id: "human", name: "Tú", color: "blue" },
+      { id: "bot", name: "Bot", color: "yellow", kind: "automatic", difficulty: "medium", seed: 5 },
+    ], rows: 2, columns: 2 });
+    const first = selectEdge(session, session.state.board.edges[0].id);
+    const progressed = runAutomaticTurns(first.session);
+    expect(progressed.session.state.occupiedEdges.length).toBeGreaterThan(1);
+    expect(progressed.session.state.occupiedEdges.length).toBeLessThanOrEqual(session.state.board.edges.length);
+    expect(JSON.stringify(progressed.session.state)).not.toContain("fetch");
   });
 });
