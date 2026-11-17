@@ -1,4 +1,17 @@
-import { applyMove, chooseBotMove, createBoardFromSelection, createGame, isAutomaticParticipant, type Board, type BoardSelection, type Edge, type BotDifficulty, type GameState, type Player } from "../../engine/src/index.js";
+import {
+  applyMove,
+  chooseBotMove,
+  createBoardFromSelection,
+  createGame,
+  isAutomaticParticipant,
+  type Board,
+  type BoardSelection,
+  type Edge,
+  type BotDifficulty,
+  type GameState,
+  type Player,
+  type Vertex,
+} from "../../engine/src/index.js";
 import catalog from "../../../assets/boards/silhouette-candidates.json";
 
 export const PLAYER_COLORS = ["blue", "yellow", "coral", "green"] as const;
@@ -7,7 +20,7 @@ export type GameMode = "machine" | "local" | "private" | "public";
 export type LocalPlayerConfig = Readonly<{ id: string; name: string; color: PlayerColor; kind?: "human" | "automatic"; difficulty?: BotDifficulty; seed?: number }>;
 export type LocalBoardSelection = Readonly<{ kind: "classic"; rows: number; columns: number }> | Readonly<{ kind: "silhouette"; id: string; cells: readonly { row: number; column: number }[] }>;
 export type LocalConfig = Readonly<{ mode?: "local" | "machine"; players: readonly LocalPlayerConfig[]; board?: LocalBoardSelection; rows?: number; columns?: number }>;
-export type LocalSession = Readonly<{ config: LocalConfig; state: GameState }>;
+export type LocalSession = Readonly<{ config: LocalConfig; state: GameState; edgeOwners: Readonly<Record<string, string>> }>;
 export type ActionFeedback = Readonly<{ kind: "none" | "move" | "capture" | "multi" | "invalid"; message: string }>;
 
 type CatalogTemplate = Readonly<{ id: string; rows: readonly string[] }>;
@@ -55,18 +68,20 @@ export function createLocalSession(config: LocalConfig): LocalSession {
     ? { id, name: name.trim(), kind: "automatic", difficulty: difficulty!, seed: seed! }
     : { id, name: name.trim(), kind: "human" });
   const board = config.board ?? { kind: "classic" as const, rows: config.rows, columns: config.columns };
-  return { config, state: createGame(createBoardFromSelection(board as BoardSelection), players) };
+  return { config, state: createGame(createBoardFromSelection(board as BoardSelection), players), edgeOwners: {} };
 }
 
 export function selectEdge(session: LocalSession, edgeId: string): Readonly<{ session: LocalSession; feedback: ActionFeedback }> {
-  const result = applyMove(session.state, { playerId: session.state.currentPlayerId, edgeId });
+  const movingPlayerId = session.state.currentPlayerId;
+  const result = applyMove(session.state, { playerId: movingPlayerId, edgeId });
   if (!result.accepted) {
     const message = result.reason === "occupied-edge" ? "Esa arista ya está ocupada." : "Elige una arista del tablero.";
     return { session, feedback: { kind: "invalid", message } };
   }
   const count = result.completedCells.length;
   const feedback: ActionFeedback = count > 1 ? { kind: "multi", message: `¡Conquista doble! +${count} puntos y sigues jugando.` } : count === 1 ? { kind: "capture", message: "¡Cuadro conquistado! Sigues jugando." } : { kind: "move", message: "Turno del siguiente jugador." };
-  return { session: { ...session, state: result.state }, feedback };
+  const edgeOwners = { ...session.edgeOwners, [edgeId]: movingPlayerId };
+  return { session: { ...session, state: result.state, edgeOwners }, feedback };
 }
 
 /** Runs only automatic turns, routing every move through applyMove. */
@@ -96,10 +111,26 @@ export function edgeGeometry(edge: Edge, cellSize = 72): Readonly<{ x1: number; 
   return { x1: edge.a.column * cellSize, y1: edge.a.row * cellSize, x2: edge.b.column * cellSize, y2: edge.b.row * cellSize };
 }
 
+export function findEdgeBetween(board: Board, a: Vertex, b: Vertex): Edge | undefined {
+  return board.edges.find((e) =>
+    (e.a.row === a.row && e.a.column === a.column && e.b.row === b.row && e.b.column === b.column) ||
+    (e.b.row === a.row && e.b.column === a.column && e.a.row === b.row && e.a.column === b.column)
+  );
+}
+
+export function uniqueBoardVertices(board: Board): readonly Vertex[] {
+  const map = new Map<string, Vertex>();
+  for (const edge of board.edges) {
+    map.set(`${edge.a.row},${edge.a.column}`, edge.a);
+    map.set(`${edge.b.row},${edge.b.column}`, edge.b);
+  }
+  return [...map.values()].sort((a, b) => a.row - b.row || a.column - b.column);
+}
+
 export type GestureState = Readonly<{ active: boolean; moved: boolean; pointers: number; scale: number; x: number; y: number; startDistance: number; lastX: number; lastY: number }>;
 export const idleGesture: GestureState = { active: false, moved: false, pointers: 0, scale: 1, x: 0, y: 0, startDistance: 0, lastX: 0, lastY: 0 };
 export function beginGesture(x: number, y: number, pointers = 1, startDistance = 0): GestureState { return { active: true, moved: false, pointers, scale: 1, x, y, startDistance, lastX: x, lastY: y }; }
-export function updateGesture(start: GestureState, x: number, y: number, scale = 1, pointers = start.pointers): GestureState { const moved = start.moved || pointers > 1 || Math.abs(x - start.x) >= 8 || Math.abs(y - start.y) >= 8 || Math.abs(scale - 1) >= 0.03; return { ...start, moved, pointers, scale, lastX: x, lastY: y }; }
+export function updateGesture(start: GestureState, x: number, y: number, scale = 1, pointers = start.pointers, threshold = 8): GestureState { const moved = start.moved || pointers > 1 || Math.abs(x - start.x) >= threshold || Math.abs(y - start.y) >= threshold || Math.abs(scale - 1) >= 0.03; return { ...start, moved, pointers, scale, lastX: x, lastY: y }; }
 export function canSelectAfterGesture(gesture: GestureState): boolean { return gesture.active && !gesture.moved && gesture.pointers === 1; }
 
 export const VIEWPORT_CHECKS = [
