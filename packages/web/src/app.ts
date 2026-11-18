@@ -15,8 +15,11 @@ import {
   updateGesture,
   MODES,
   PLAYER_COLORS,
+  celebrationForCaptureCount,
+  shouldPlaySound,
   selectEdge,
   type ActionFeedback,
+  type Celebration,
   type GameMode,
   type GestureState,
   type LocalPlayerConfig,
@@ -30,13 +33,18 @@ import { UpdateCoordinator } from "./update-coordinator";
   standalone: true,
   imports: [CommonModule],
   template: `
-<main class="app-shell">
+<main class="app-shell" [class.reduced-motion]="reducedMotion">
   <p *ngIf="updatePending && screen !== 'game'" class="update-banner" role="status">Hay una actualización lista. <button class="quiet" (click)="activatePendingUpdate()">Actualizar</button></p>
   <header class="brand"><img src="assets/branding/boxio-wordmark.svg" alt="Boxio"><span>Juega, captura, conquista</span></header>
   <section *ngIf="screen === 'home'" class="panel home">
     <img class="hero-icon" src="assets/branding/boxio-app-icon.svg" alt="">
     <h1>Elige cómo jugar</h1>
     <p class="muted">Sin registro. Comparte el dispositivo y disfruta la partida.</p>
+    <fieldset class="preferences" aria-label="Preferencias de accesibilidad">
+      <legend>Preferencias</legend>
+      <label><input type="checkbox" [checked]="soundEnabled" (change)="setSoundEnabled($any($event.target).checked)"> Sonido</label>
+      <label><input type="checkbox" [checked]="!reducedMotion" (change)="setReducedMotion(!$any($event.target).checked)"> Animaciones</label>
+    </fieldset>
     <div class="mode-grid">
       <button *ngFor="let mode of modes" class="mode-card" [class.disabled]="!mode.available" [disabled]="!mode.available" (click)="chooseMode(mode.id)" [attr.aria-label]="mode.label + (mode.available ? '' : ', no disponible')">
         <span class="mode-icon">{{ mode.id === 'local' ? '👥' : mode.id === 'machine' ? '🤖' : mode.id === 'private' ? '🔒' : '🌐' }}</span>
@@ -240,8 +248,10 @@ import { UpdateCoordinator } from "./update-coordinator";
       <p>Estado confirmado: {{ publicMatch.status }} · Versión {{ publicMatch.version }}</p>
       <p *ngIf="publicMatch.status === 'abandoned'" role="status">Victoria por abandono: el rival no regresó dentro de la reserva de 60 segundos.</p>
       <p *ngIf="publicMatch.status === 'complete' && publicMatch.result?.cause === 'normal'" role="status">Partida terminada por puntuación.</p>
+      <p *ngIf="publicMatch.status === 'complete' && publicMatch.result?.cause === 'normal' && publicMatch.result?.winners?.length > 1" role="status">Resultado: empate con ganadores compartidos.</p>
       <p *ngIf="publicMatch.status === 'active' && publicDisconnected" role="status">Desconectado. Tu reserva termina a {{ publicReservationExpiresAt || 'los 60 segundos' }}.</p>
       <div class="online-edges"><button *ngFor="let edge of publicMatch.game.board.edges" [disabled]="publicMatch.game.occupiedEdges.includes(edge.id)" (click)="publicMove(edge.id)">{{ edge.id }}</button></div>
+      <button *ngIf="publicMatch.status !== 'active'" class="primary" (click)="leavePublic()">Continuar al inicio</button>
     </div>
   </section>
   <section *ngIf="screen === 'setup'" class="panel setup">
@@ -287,7 +297,8 @@ import { UpdateCoordinator } from "./update-coordinator";
         </div>
       </div>
     </div>
-    <p class="feedback" [class.invalid]="feedback.kind === 'invalid'" [class.capture]="feedback.kind === 'capture' || feedback.kind === 'multi'" role="status">{{ feedback.message }}</p>
+      <p class="feedback" [class.invalid]="feedback.kind === 'invalid'" [class.capture]="feedback.kind === 'capture' || feedback.kind === 'multi'" role="status">{{ feedback.message }}</p>
+    <p *ngIf="celebration.kind !== 'none'" class="move-celebration" [class.multiple]="celebration.kind === 'multiple'" [class.reduced]="reducedMotion" role="status" aria-live="polite">{{ celebration.label }}</p>
     <div class="board-viewport" (pointerdown)="pointerDown($event)" (pointermove)="pointerMove($event)" (pointerup)="pointerUp($event)" (pointercancel)="pointerCancel($event)">
       <svg class="board" [attr.viewBox]="'0 0 ' + boardWidth + ' ' + boardHeight" [style.transform]="'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')'" role="img" aria-label="Tablero de juego">
         <g class="cells">
@@ -347,7 +358,8 @@ import { UpdateCoordinator } from "./update-coordinator";
   </section>
   <section *ngIf="screen === 'result' && session" class="panel result">
     <div class="celebration">★</div>
-    <h1>{{ session.state.winners.length > 1 ? '¡Empate!' : '¡Partida terminada!' }}</h1>
+    <h1>{{ session.state.winners.length > 1 ? '¡Empate!' : '¡Victoria normal!' }}</h1>
+    <p class="result-cause" role="status">{{ session.state.winners.length > 1 ? 'Resultado: empate' : 'Resultado: victoria por puntuación' }}</p>
     <p class="muted">Puntuación final</p>
     <div class="final-score" *ngFor="let player of session.config.players">
       <span class="color-dot" [style.background]="colorValue(player.color)"></span>
@@ -355,7 +367,7 @@ import { UpdateCoordinator } from "./update-coordinator";
       <strong>{{ session.state.scores[player.id] }}</strong>
       <span *ngIf="session.state.winners.includes(player.id)">🏆</span>
     </div>
-    <button class="primary" (click)="screen = 'home'; session = null">Volver al inicio</button>
+    <button class="primary" (click)="continueFromLocalResult()">Volver al inicio</button>
   </section>
   <footer>
     <span>{{ soundCount }} sonidos locales</span>
@@ -444,17 +456,24 @@ import { UpdateCoordinator } from "./update-coordinator";
     .quiet{align-self:center}
     footer{display:flex;justify-content:center;gap:8px;margin-top:12px}
     .celebration{text-align:center;font-size:64px;color:#ffc72c}
+    .preferences{display:flex;gap:16px;justify-content:center;border:0;margin:10px 0;padding:0}.preferences label{min-height:44px;display:flex;align-items:center;gap:6px}.preferences input{width:20px;height:20px}
+    .move-celebration{text-align:center;min-height:28px;color:#a26400;font-weight:800;animation:celebrate .38s ease-out}.move-celebration.multiple{font-size:1.15rem}.move-celebration.reduced{animation:none}.result-cause{font-weight:700;color:#42648c}
+    @keyframes celebrate{from{opacity:.2;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
     .final-score{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:10px;padding:12px;border-bottom:1px solid #d9edf8;font-size:20px}
     .final-score strong{font-size:28px}
     @media(max-width:600px){.app-shell{padding:12px 10px}.brand span{font-size:11px}.game-status{display:block}.scores{justify-content:flex-start}.score{flex:1;min-width:80px}.board-viewport{min-height:320px}.mode-grid{gap:8px}.mode-card{padding:10px 5px}.panel{padding:20px 16px;margin-top:14px}}
     @media(min-width:800px){.board-viewport{min-height:540px}.game-status{padding:0 12px}}
     @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+    .reduced-motion *, .reduced-motion *::before, .reduced-motion *::after{animation:none!important;transition:none!important}
   `]
 })
 export class AppComponent {
   screen: "home" | "setup" | "online" | "public" | "game" | "result" = "home";
   modes = MODES;
   soundCount = Object.keys(soundCatalog).length;
+  soundEnabled = this.readPreference("boxio.soundEnabled", true);
+  reducedMotion = this.readPreference("boxio.reducedMotion", this.systemReducedMotion());
+  celebration: Celebration = celebrationForCaptureCount(0);
   playerCount = 2;
   rows = 3;
   columns = 3;
@@ -523,6 +542,27 @@ export class AppComponent {
   publicReservationExpiresAt = "";
   private publicPoll?: ReturnType<typeof setInterval>;
   private publicSocket?: WebSocket;
+
+  private systemReducedMotion(): boolean {
+    return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  private readPreference(key: string, fallback: boolean): boolean {
+    try {
+      const value = typeof localStorage === "undefined" ? null : localStorage.getItem(key);
+      return value === null ? fallback : value === "true";
+    } catch { return fallback; }
+  }
+
+  setSoundEnabled(enabled: boolean) {
+    this.soundEnabled = enabled;
+    try { localStorage.setItem("boxio.soundEnabled", String(enabled)); } catch {}
+  }
+
+  setReducedMotion(reduced: boolean) {
+    this.reducedMotion = reduced;
+    try { localStorage.setItem("boxio.reducedMotion", String(reduced)); } catch {}
+  }
 
   copyInvitationCode() {
     if (!this.onlineInvitation) return;
@@ -870,6 +910,7 @@ export class AppComponent {
     } as const;
     try {
       this.session = createLocalSession(config);
+      this.celebration = celebrationForCaptureCount(0);
       this.setupError = "";
       this.feedback = { kind: "none", message: "Turno de " + (this.session.state.players[0]?.name ?? "") };
       this.screen = "game";
@@ -959,7 +1000,9 @@ export class AppComponent {
     this.feedback = result.feedback;
     if (result.feedback.kind !== "invalid") {
       this.session = result.session;
-      this.playSound(result.feedback.kind === "multi" ? "multi" : result.feedback.kind === "capture" ? "capture" : "edge");
+      const captureCount = result.feedback.kind === "multi" ? Number(result.feedback.message.match(/\+(\d+)/)?.[1] ?? 2) : result.feedback.kind === "capture" ? 1 : 0;
+      this.celebration = celebrationForCaptureCount(captureCount);
+      this.playSound(captureCount > 1 ? "multi" : captureCount === 1 ? "capture" : "edge");
       const automatic = runAutomaticTurns(this.session);
       this.session = automatic.session;
       if (automatic.feedback.kind !== "none") this.feedback = automatic.feedback;
@@ -1060,6 +1103,13 @@ export class AppComponent {
       this.playSound(this.session.state.winners.length > 1 ? "tie" : "victory");
       this.screen = "result";
     }
+  }
+
+  continueFromLocalResult() {
+    this.session = null;
+    this.celebration = celebrationForCaptureCount(0);
+    this.feedback = { kind: "none", message: "" };
+    this.screen = "home";
   }
 
   pointerDown(event: PointerEvent) {
@@ -1170,6 +1220,7 @@ export class AppComponent {
   }
 
   private playSound(sound: Parameters<typeof playBoxioSound>[1]) {
+    if (!shouldPlaySound({ soundEnabled: this.soundEnabled, reducedMotion: this.reducedMotion })) return;
     if (typeof AudioContext === "undefined") return;
     this.audioContext ??= new AudioContext();
     playBoxioSound(this.audioContext, sound);

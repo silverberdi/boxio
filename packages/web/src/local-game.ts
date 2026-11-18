@@ -22,6 +22,20 @@ export type LocalBoardSelection = Readonly<{ kind: "classic"; rows: number; colu
 export type LocalConfig = Readonly<{ mode?: "local" | "machine"; players: readonly LocalPlayerConfig[]; board?: LocalBoardSelection; rows?: number; columns?: number }>;
 export type LocalSession = Readonly<{ config: LocalConfig; state: GameState; edgeOwners: Readonly<Record<string, string>> }>;
 export type ActionFeedback = Readonly<{ kind: "none" | "move" | "capture" | "multi" | "invalid"; message: string }>;
+export type Celebration = Readonly<{ count: number; kind: "none" | "single" | "multiple"; label: string; sound: "capture" | "multi" }>;
+export type AccessibilityPreferences = Readonly<{ soundEnabled: boolean; reducedMotion: boolean }>;
+
+/** Common presentation decision used by local, machine and online shells. */
+export function celebrationForCaptureCount(count: number): Celebration {
+  if (!Number.isInteger(count) || count < 0) throw new RangeError("Capture count must be a non-negative integer");
+  if (count === 0) return { count, kind: "none", label: "", sound: "capture" };
+  if (count === 1) return { count, kind: "single", label: "¡Cuadro conquistado!", sound: "capture" };
+  return { count, kind: "multiple", label: `¡Conquista múltiple! ${count} cuadros`, sound: "multi" };
+}
+
+export function shouldPlaySound(preferences: AccessibilityPreferences): boolean {
+  return preferences.soundEnabled;
+}
 
 type CatalogTemplate = Readonly<{ id: string; rows: readonly string[] }>;
 export const SILHOUETTE_CATALOG = catalog.templates as readonly CatalogTemplate[];

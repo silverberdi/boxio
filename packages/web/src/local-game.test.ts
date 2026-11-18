@@ -12,11 +12,36 @@ import {
   validateLocalConfig,
   VIEWPORT_CHECKS,
   SILHOUETTE_CATALOG,
+  celebrationForCaptureCount,
+  shouldPlaySound,
 } from "./local-game";
 
 const players = (count: number) => Array.from({ length: count }, (_, i) => ({ id: `p${i}`, name: `P${i}`, color: (["blue", "yellow", "coral", "green"] as const)[i] }));
 
 describe("local-game UI boundary", () => {
+  it("centralizes normal and multiple non-blocking celebration decisions", () => {
+    expect(celebrationForCaptureCount(0).kind).toBe("none");
+    expect(celebrationForCaptureCount(1)).toMatchObject({ kind: "single", sound: "capture" });
+    expect(celebrationForCaptureCount(2)).toMatchObject({ kind: "multiple", label: "¡Conquista múltiple! 2 cuadros", sound: "multi" });
+    expect(() => celebrationForCaptureCount(-1)).toThrow();
+  });
+
+  it("honors mute before an audio context can be requested", () => {
+    expect(shouldPlaySound({ soundEnabled: false, reducedMotion: false })).toBe(false);
+    expect(shouldPlaySound({ soundEnabled: true, reducedMotion: true })).toBe(true);
+  });
+
+  it("keeps the next state interactive after a multiple capture", () => {
+    const session = createLocalSession({ players: players(2), rows: 2, columns: 2 });
+    const open = ["0,0-0,1", "0,0-1,0", "0,1-0,2", "0,1-1,1", "0,2-1,2", "1,0-1,1", "1,0-2,0", "1,1-2,1", "1,2-2,2", "2,1-2,2"];
+    const shared = "1,1-1,2";
+    let current = session;
+    for (const edge of open) current = selectEdge(current, edge).session;
+    const result = selectEdge(current, shared);
+    expect(result.feedback.kind).toBe("multi");
+    expect(result.session.state.status).toBe("active");
+    expect(selectEdge(result.session, result.session.state.board.edges.find((edge) => !result.session.state.occupiedEdges.includes(edge.id))!.id).feedback.kind).not.toBe("invalid");
+  });
   it("offers nine catalog boards and creates local sessions through the same engine", () => {
     expect(SILHOUETTE_CATALOG).toHaveLength(9);
     for (const template of SILHOUETTE_CATALOG) {
