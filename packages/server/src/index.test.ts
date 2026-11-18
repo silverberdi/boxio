@@ -4,6 +4,7 @@ import WebSocket from "ws";
 import { createRectangularBoard } from "@boxio/engine";
 import { buildServer, PersistentRoomStore } from "./index.js";
 import { PrivateRoom, type RoomPersistence } from "./private-room.js";
+import { testPublicPersistence } from "./test-public-persistence.js";
 
 function recordingPersistence() {
   const saved: PrivateRoom[] = [];
@@ -14,7 +15,7 @@ function recordingPersistence() {
 test("join and lifecycle transitions are persisted before HTTP responses", async () => {
   const { persistence, saved } = recordingPersistence();
   const store = new PersistentRoomStore(persistence);
-  const app = buildServer(store);
+  const app = buildServer(store, testPublicPersistence());
 
   const created = await app.inject({ method: "POST", url: "/rooms", payload: { name: "Host", rows: 2, columns: 2 } });
   const host = created.json();
@@ -34,7 +35,7 @@ test("room creation persists the final host credential returned to the client", 
   const persistence: RoomPersistence = { save: async (room) => {
     savedHashes.push(room.toPersistence().participants.find((participant) => participant.host)?.credentialHash);
   } };
-  const app = buildServer(new PersistentRoomStore(persistence));
+  const app = buildServer(new PersistentRoomStore(persistence), testPublicPersistence());
   const response = await app.inject({ method: "POST", url: "/rooms", payload: { name: "Host", rows: 2, columns: 2 } });
   const created = response.json();
   const { createHash } = await import("node:crypto");
@@ -50,7 +51,7 @@ test("snapshot evaluation expires reservations in the running server", async () 
   let now = realNow();
   Date.now = () => now;
   try {
-    const app = buildServer();
+    const app = buildServer(undefined, testPublicPersistence());
     const created = (await app.inject({ method: "POST", url: "/rooms", payload: { name: "Host", rows: 2, columns: 2 } })).json();
     const guest = (await app.inject({ method: "POST", url: `/rooms/${created.roomId}/join`, payload: { name: "Guest", invitationCode: created.invitationCode } })).json();
     await app.inject({ method: "POST", url: `/rooms/${created.roomId}/participants/${guest.participantId}/lifecycle`, payload: { action: "disconnect" } });
@@ -74,7 +75,7 @@ test("persistent store loads an invitation miss from its durable adapter", async
 
 test("WebSocket reconnection is persisted before its snapshot is sent", { timeout: 5_000 }, async () => {
   const { persistence, saved } = recordingPersistence();
-  const app = buildServer(new PersistentRoomStore(persistence));
+  const app = buildServer(new PersistentRoomStore(persistence), testPublicPersistence());
   await app.listen({ host: "127.0.0.1", port: 0 });
   const address = app.server.address();
   assert.ok(address && typeof address === "object");

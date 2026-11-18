@@ -12,6 +12,8 @@ import {
 } from "./private-room.js";
 import { parseMessage, serializeMessage, snapshotMessage, type PrivateMessage } from "./private-protocol.js";
 import { PostgresRoomPersistence, type PostgresQuery } from "./postgres-room-persistence.js";
+import { createPostgresPublicMatchmakingPersistence } from "./postgres-public-matchmaking-persistence.js";
+import { PublicMatchmaking, type PublicCommand } from "./public-matchmaking.js";
 
 export interface RoomStore {
   create(board: Board, hostName: string): Promise<PrivateRoom> | PrivateRoom;
@@ -91,17 +93,32 @@ export class PersistentRoomStore implements RoomStore {
   }
 }
 
-export function buildServer(store: RoomStore = new PersistentRoomStore()) {
+export function buildServer(
+  store: RoomStore = new PersistentRoomStore(),
+  publicPersistence: ConstructorParameters<typeof PublicMatchmaking>[1] | undefined = undefined,
+  publicClock: () => number = Date.now,
+) {
   const app = Fastify({ logger: false });
   app.get("/health", async () => ({ ok: true, engine: createRectangularBoard(2, 2).cells.length === 4 }));
   app.register(websocket);
 
   const roomSockets = new Map<string, Set<WebSocket>>();
+  // The only implicit runtime path is PostgreSQL. An in-memory adapter is accepted
+  // only when a caller explicitly supplies one (the isolated test fixture does so).
+  const productionPersistence = publicPersistence === undefined ? createPostgresPublicMatchmakingPersistence() : undefined;
+  const durablePublicPersistence = publicPersistence ?? productionPersistence?.persistence;
+  if (!durablePublicPersistence) throw new Error("Public matchmaking requires PostgreSQL persistence");
+  const publicMatchmaking = new PublicMatchmaking(publicClock, durablePublicPersistence);
+  const publicSockets = new Map<string, Set<WebSocket>>();
 
   const persistRoom = async (room: PrivateRoom) => { await store.persist(room); };
   const expirationTimer = setInterval(() => { void store.expireReservations(); }, 1_000);
   expirationTimer.unref();
   app.addHook("onClose", async () => { clearInterval(expirationTimer); });
+  const publicExpirationTimer = setInterval(() => { void publicMatchmaking.expire(); }, 1_000);
+  publicExpirationTimer.unref();
+  app.addHook("onClose", async () => { clearInterval(publicExpirationTimer); });
+  app.addHook("onClose", async () => { await productionPersistence?.close(); });
 
   function broadcast(roomId: string, message: PrivateMessage) {
     const sockets = roomSockets.get(roomId);
@@ -113,6 +130,79 @@ export function buildServer(store: RoomStore = new PersistentRoomStore()) {
       }
     }
   }
+
+  const publicBroadcast = (matchId: string, payload: unknown) => {
+    const sockets = publicSockets.get(matchId);
+    if (!sockets) return;
+    const raw = JSON.stringify(payload);
+    for (const socket of sockets) if (socket.readyState === 1) { try { socket.send(raw); } catch { /* closed concurrently */ } }
+  };
+
+  app.post<{ Body: { name: string; rows?: unknown; columns?: unknown; selection?: BoardSelection } }>("/public/search", async (request, reply) => {
+    try {
+      const board = request.body.selection ? createBoardFromSelection(request.body.selection) : createRectangularBoard(request.body.rows ?? 2, request.body.columns ?? 2);
+      const entered = await publicMatchmaking.enter(board, request.body.name);
+      return reply.code(201).send(entered);
+    } catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "invalid-search" }); }
+  });
+  app.get<{ Params: { searchId: string } }>("/public/search/:searchId", async (request, reply) => {
+    const search = await publicMatchmaking.getSearch(request.params.searchId);
+    return search ? reply.send(search) : reply.code(404).send({ error: "search-not-found" });
+  });
+  app.post<{ Params: { searchId: string } }>("/public/search/:searchId/cancel", async (request, reply) => {
+    try { return reply.send(await publicMatchmaking.cancel(request.params.searchId)); }
+    catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : "search-not-available" }); }
+  });
+  app.post<{ Params: { searchId: string } }>("/public/search/:searchId/continue", async (request, reply) => {
+    try { return reply.send(await publicMatchmaking.continue(request.params.searchId)); }
+    catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : "search-not-available" }); }
+  });
+  app.post<{ Params: { searchId: string } }>("/public/search/:searchId/machine", async (request, reply) => {
+    try { return reply.send(await publicMatchmaking.machine(request.params.searchId)); }
+    catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : "search-not-available" }); }
+  });
+  app.get<{ Params: { matchId: string } }>("/public/matches/:matchId", async (request, reply) => {
+    const match = await publicMatchmaking.getMatch(request.params.matchId);
+    return match ? reply.send(match) : reply.code(404).send({ error: "match-not-found" });
+  });
+  app.post<{ Params: { matchId: string }; Body: PublicCommand }>("/public/matches/:matchId/commands", async (request, reply) => {
+    const result = await publicMatchmaking.command(request.params.matchId, request.body);
+    if (!result) return reply.code(404).send({ error: "match-not-found" });
+    publicBroadcast(request.params.matchId, result);
+    return result.accepted ? reply.send(result) : reply.code(409).send(result);
+  });
+  app.post<{ Params: { matchId: string; participantId: string }; Body: { action: "disconnect" | "reconnect"; credential?: string } }>("/public/matches/:matchId/participants/:participantId/lifecycle", async (request, reply) => {
+    try {
+      await publicMatchmaking.expire(publicClock());
+      const result = request.body.action === "disconnect"
+        ? await publicMatchmaking.disconnect(request.params.matchId, request.params.participantId)
+        : await publicMatchmaking.reconnect(request.params.matchId, request.params.participantId, request.body.credential ?? "");
+      if (!result) return reply.code(404).send({ error: "match-not-found" });
+      publicBroadcast(request.params.matchId, result);
+      return reply.send(result);
+    } catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : "invalid-reconnect" }); }
+  });
+  app.register(async (instance) => {
+    instance.get<{ Params: { matchId: string } }>("/public/matches/:matchId/ws", { websocket: true }, async (socket, request) => {
+      const match = await publicMatchmaking.getMatch(request.params.matchId);
+      if (!match) { socket.close(1008, "match-not-found"); return; }
+      let sockets = publicSockets.get(request.params.matchId);
+      if (!sockets) { sockets = new Set(); publicSockets.set(request.params.matchId, sockets); }
+      sockets.add(socket); socket.send(JSON.stringify({ type: "snapshot", snapshot: match }));
+      socket.on("close", () => { sockets?.delete(socket); if (sockets?.size === 0) publicSockets.delete(request.params.matchId); });
+      socket.on("message", async (raw: Buffer) => {
+        try {
+          const message = JSON.parse(raw.toString()) as { type?: string; command?: PublicCommand; participantId?: string; credential?: string };
+          const result = message.type === "command" && message.command
+            ? await publicMatchmaking.command(request.params.matchId, message.command)
+            : message.type === "reconnect" && message.participantId
+              ? await publicMatchmaking.reconnect(request.params.matchId, message.participantId, message.credential ?? "")
+              : undefined;
+          if (result) publicBroadcast(request.params.matchId, result); else socket.send(JSON.stringify({ type: "reject", code: "invalid-message", snapshot: await publicMatchmaking.getMatch(request.params.matchId) }));
+        } catch { socket.send(JSON.stringify({ type: "reject", code: "invalid-message" })); }
+      });
+    });
+  });
 
   app.post<{ Body: { rows?: unknown; columns?: unknown; selection?: BoardSelection; name: string } }>("/rooms", async (request, reply) => {
     try {

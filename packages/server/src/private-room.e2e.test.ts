@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import WebSocket from "ws";
 import { buildServer } from "./index.js";
+import { testPublicPersistence } from "./test-public-persistence.js";
 
 test("HTTP/WebSocket-facing room flow exposes only confirmed server state", async () => {
-  const app = buildServer();
+  const app = buildServer(undefined, testPublicPersistence());
   const created = await app.inject({ method: "POST", url: "/rooms", payload: { name: "Host", rows: 2, columns: 2 } });
   assert.equal(created.statusCode, 201);
   const host = created.json();
@@ -25,7 +26,7 @@ test("HTTP/WebSocket-facing room flow exposes only confirmed server state", asyn
 });
 
 test("two real WebSocket clients race the same command and receive one confirmation", { timeout: 5_000 }, async () => {
-  const app = buildServer();
+  const app = buildServer(undefined, testPublicPersistence());
   await app.listen({ host: "127.0.0.1", port: 0 });
   const address = app.server.address();
   assert.ok(address && typeof address === "object");
@@ -63,7 +64,7 @@ test("two real WebSocket clients race the same command and receive one confirmat
 });
 
 test("four real WebSocket clients observe one ordered durable turn chain", { timeout: 5_000 }, async () => {
-  const app = buildServer();
+  const app = buildServer(undefined, testPublicPersistence());
   await app.listen({ host: "127.0.0.1", port: 0 });
   const address = app.server.address();
   assert.ok(address && typeof address === "object");
