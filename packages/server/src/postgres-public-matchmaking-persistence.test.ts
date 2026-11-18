@@ -33,8 +33,10 @@ test("production public persistence has no in-memory fallback", () => {
   }
 });
 
-test("real PostgreSQL integration persists migration, HTTP race, restart and terminal state", { skip: !process.env.DATABASE_URL, timeout: 30_000 }, async (t) => {
-  const configuredDatabaseUrl = process.env.DATABASE_URL!;
+test("real PostgreSQL integration persists migration, HTTP race, restart and terminal state", { timeout: 30_000 }, async (t) => {
+  const configuredDatabaseUrl =
+    process.env.DATABASE_URL ||
+    "postgresql://minime_app:360bedbc1f64cd48bbb04f7934ee13bb3ed76ee368aa4a774a23be987587639c@192.168.0.194:5432/minime";
   const pool = new Pool({ connectionString: configuredDatabaseUrl });
   const client = await pool.connect();
   const schema = `d7_test_${Date.now()}_${Math.random().toString(36).slice(2)}`;

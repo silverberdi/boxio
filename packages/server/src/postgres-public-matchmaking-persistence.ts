@@ -11,7 +11,7 @@ export class PostgresPublicMatchmakingPersistence implements PublicMatchmakingPe
 
   async load(): Promise<StoredState> {
     const [searches, matches] = await Promise.all([
-      this.query("SELECT search_id, participant_id, name, status, version, board, created_at, timed_out, match_id, participant_credential_hash FROM public_matchmaking_searches WHERE status IN ('searching', 'matched')"),
+      this.query("SELECT search_id, participant_id, name, status, version, board, created_at, timed_out, match_id, participant_credential_hash FROM public_matchmaking_searches WHERE status IN ('searching', 'matched', 'cancelled')"),
       this.query("SELECT snapshot FROM public_matches WHERE status IN ('active', 'complete', 'abandoned')"),
     ]);
     return {
@@ -26,8 +26,8 @@ export class PostgresPublicMatchmakingPersistence implements PublicMatchmakingPe
 
   async save(state: StoredState): Promise<void> {
     const write = async (query: PostgresQuery): Promise<void> => {
-      await query("DELETE FROM public_matchmaking_searches WHERE status IN ('searching', 'matched')");
-      for (const search of state.searches.filter((item) => item.status !== "cancelled")) {
+      await query("DELETE FROM public_matchmaking_searches WHERE status IN ('searching', 'matched', 'cancelled')");
+      for (const search of state.searches) {
         await query(
           `INSERT INTO public_matchmaking_searches
              (search_id, participant_id, name, status, version, board, created_at, timed_out, match_id, participant_credential_hash)
@@ -42,9 +42,21 @@ export class PostgresPublicMatchmakingPersistence implements PublicMatchmakingPe
           `INSERT INTO public_matches (match_id, status, version, event_sequence, snapshot, finish_cause, finished_at)
            VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, CASE WHEN $2 <> 'active' THEN now() ELSE NULL END)
            ON CONFLICT (match_id) DO UPDATE SET status = EXCLUDED.status, version = EXCLUDED.version,
-             event_sequence = EXCLUDED.event_sequence, snapshot = EXCLUDED.snapshot, finish_cause = EXCLUDED.finish_cause`,
+             event_sequence = EXCLUDED.event_sequence, snapshot = EXCLUDED.snapshot,
+             finish_cause = EXCLUDED.finish_cause, finished_at = EXCLUDED.finished_at`,
           [match.matchId, match.status, match.version, match.eventSequence, JSON.stringify(match), match.result?.cause ?? null],
         );
+        for (let i = 0; i < (match.seats || []).length; i++) {
+          const seat = match.seats[i];
+          const expiresAt = seat.reservationExpiresAt ? new Date(seat.reservationExpiresAt).toISOString() : null;
+          await query(
+            `INSERT INTO public_match_seats (match_id, participant_id, seat, status, reservation_expires_at)
+             VALUES ($1::uuid, $2::uuid, $3, $4, $5::timestamptz)
+             ON CONFLICT (match_id, seat) DO UPDATE SET participant_id = EXCLUDED.participant_id,
+               status = EXCLUDED.status, reservation_expires_at = EXCLUDED.reservation_expires_at`,
+            [match.matchId, seat.id, i, seat.status, expiresAt],
+          );
+        }
       }
     };
     if (this.transaction) return this.transaction(write);

@@ -115,7 +115,15 @@ export function buildServer(
   const expirationTimer = setInterval(() => { void store.expireReservations(); }, 1_000);
   expirationTimer.unref();
   app.addHook("onClose", async () => { clearInterval(expirationTimer); });
-  const publicExpirationTimer = setInterval(() => { void publicMatchmaking.expire(); }, 1_000);
+  const publicExpirationTimer = setInterval(() => {
+    void publicMatchmaking.expire(publicClock()).then((snapshots) => {
+      for (const snap of snapshots) {
+        if (snap.status === "abandoned" || snap.status === "complete") {
+          publicBroadcast(snap.matchId, snap);
+        }
+      }
+    });
+  }, 1_000);
   publicExpirationTimer.unref();
   app.addHook("onClose", async () => { clearInterval(publicExpirationTimer); });
   app.addHook("onClose", async () => { await productionPersistence?.close(); });
