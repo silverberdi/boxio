@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, ChangeDetectorRef } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { SwUpdate } from "@angular/service-worker";
 import {
@@ -47,24 +47,179 @@ import { UpdateCoordinator } from "./update-coordinator";
     <p class="scope-note">Las modalidades bloqueadas se habilitarán en próximas entregas.</p>
   </section>
   <section *ngIf="screen === 'online'" class="panel online-room">
-    <button class="back" (click)="screen = 'home'">← Inicio</button>
-    <h1>Sala privada</h1>
-    <p class="muted">La invitación localiza la sala; el servidor confirma identidad, turno y puntuación.</p>
-    <label>Tu apodo <input [value]="onlineName" (input)="onlineName = $any($event.target).value" maxlength="18" aria-label="Apodo online"></label>
-    <button class="primary" (click)="createPrivateRoom()">Crear sala</button>
-    <label>Código de invitación <input [value]="onlineInvitation" (input)="onlineInvitation = $any($event.target).value" aria-label="Código de invitación"></label>
-    <button class="primary" (click)="joinPrivateRoom()">Entrar en sala</button>
-    <p role="status">{{ onlineConnection }}</p>
-    <p *ngIf="onlineError" class="error" role="alert">{{ onlineError }}</p>
-    <div *ngIf="onlineSnapshot" class="online-state">
-      <p>Participantes: {{ onlineSnapshot.participants.length }}/4 · Estado: {{ onlineSnapshot.status }}</p>
-      <p>Versión confirmada: {{ onlineSnapshot.version }} · Turno: {{ onlineSnapshot.game?.currentPlayerId }}</p>
-      <div class="online-edges" *ngIf="onlineSnapshot.game">
-        <button *ngFor="let edge of onlineSnapshot.game.board.edges" [disabled]="onlineSnapshot.game.occupiedEdges.includes(edge.id)" (click)="onlineMove(edge.id)">{{ edge.id }}</button>
+    <button class="back" (click)="exitOnline()">← Inicio</button>
+    <h1>Salas privadas online</h1>
+    <p class="muted">Juega a distancia con amigos (2 a 4 participantes). El servidor coordina identidad, turnos y puntuación.</p>
+
+    <!-- Estado: Configuración / selección de acción si aún no hay sala -->
+    <div *ngIf="!onlineRoomId" class="online-actions-grid">
+      <!-- Tarjeta 1: Crear Sala (Anfitrión) -->
+      <div class="online-card">
+        <h2>Crear una sala</h2>
+        <p class="muted"><small>Inicia como anfitrión. El sistema generará un código para compartir.</small></p>
+        <label class="field-label">
+          <span>Tu apodo</span>
+          <input [value]="onlineName" (input)="onlineName = $any($event.target).value" maxlength="18" placeholder="Tu nombre" aria-label="Apodo anfitrión">
+        </label>
+        <div class="board-choice compact">
+          <label class="field-label">
+            <span>Filas</span>
+            <input type="number" min="2" max="6" [value]="onlineRows" (input)="onlineRows = +$any($event.target).value">
+          </label>
+          <label class="field-label">
+            <span>Columnas</span>
+            <input type="number" min="2" max="6" [value]="onlineColumns" (input)="onlineColumns = +$any($event.target).value">
+          </label>
+        </div>
+        <button class="primary" [disabled]="isConnecting" (click)="createPrivateRoom()">
+          {{ isConnecting ? 'Creando sala...' : 'Crear sala' }}
+        </button>
+      </div>
+
+      <div class="online-divider"><span>O</span></div>
+
+      <!-- Tarjeta 2: Unirse a Sala (Invitado) -->
+      <div class="online-card">
+        <h2>Unirse a una sala</h2>
+        <p class="muted"><small>Introduce el código que te compartió el creador de la sala.</small></p>
+        <label class="field-label">
+          <span>Tu apodo</span>
+          <input [value]="onlineJoinName" (input)="onlineJoinName = $any($event.target).value" maxlength="18" placeholder="Tu nombre" aria-label="Apodo participante">
+        </label>
+        <label class="field-label">
+          <span>Código de invitación</span>
+          <input [value]="onlineInvitation" (input)="onlineInvitation = $any($event.target).value" maxlength="64" placeholder="Ej: eWzFa6qHK..." aria-label="Código de invitación">
+        </label>
+        <button class="primary" [disabled]="isConnecting" (click)="joinPrivateRoom()">
+          {{ isConnecting ? 'Conectando...' : 'Entrar en sala' }}
+        </button>
       </div>
     </div>
+
+    <!-- Estado: Dentro de una sala -->
+    <div *ngIf="onlineRoomId" class="online-active-room">
+
+      <!-- Vista 1: Lobby (esperando más jugadores) -->
+      <div *ngIf="onlineSnapshot?.status === 'lobby'">
+        <div class="invitation-banner">
+          <div>
+            <span class="eyebrow">Código para invitar a tus amigos</span>
+            <strong class="invitation-code">{{ onlineInvitation }}</strong>
+          </div>
+          <button class="quiet copy-btn" (click)="copyInvitationCode()">{{ copyStatus || 'Copiar código' }}</button>
+        </div>
+
+        <p *ngIf="onlineConnection" class="connection-status" role="status" [class.connected]="onlineConnection.includes('Confirmado') || onlineConnection.includes('Conectado')">
+          {{ onlineConnection }}
+        </p>
+
+        <div class="room-info" style="margin: 14px 0 6px;">
+          <span>Participantes en sala: <strong>{{ onlineSnapshot.participants.length }}/4</strong></span>
+          <p class="muted" style="margin: 8px 0;"><small>Comparte el código con otro jugador. En cuanto se una, el tablero aparecerá automáticamente para ambos.</small></p>
+        </div>
+
+        <div class="participants-list">
+          <div *ngFor="let p of onlineSnapshot.participants" class="participant-badge" [class.current]="p.id === onlineParticipantId">
+            <span class="color-dot" [style.background]="getParticipantColor(p.id)"></span>
+            <b>{{ p.name }}</b>
+            <small *ngIf="p.host">(Anfitrión)</small>
+            <span *ngIf="p.id === onlineParticipantId" class="you-badge">(Tú)</span>
+          </div>
+        </div>
+
+        <button class="quiet leave-btn" (click)="exitOnline()">Salir de la sala</button>
+      </div>
+
+      <!-- Vista 2: En juego (partida activa o completa) -->
+      <div *ngIf="onlineSnapshot?.game">
+        <div class="game-status" style="margin-bottom: 8px;">
+          <div>
+            <p class="eyebrow">Turno actual</p>
+            <h1 [style.color]="getParticipantColor(onlineSnapshot.game.currentPlayerId)">
+              {{ getParticipantName(onlineSnapshot.game.currentPlayerId) }}
+              <span *ngIf="isMyTurn()" class="my-turn-badge">¡Es tu turno!</span>
+            </h1>
+          </div>
+          <div class="scores" aria-label="Marcadores">
+            <div *ngFor="let p of onlineSnapshot.participants" class="score" [class.active]="p.id === onlineSnapshot.game.currentPlayerId">
+              <span class="color-dot" [style.background]="getParticipantColor(p.id)"></span>
+              <b>{{ p.name }}<span *ngIf="p.id === onlineParticipantId"> (Tú)</span></b>
+              <strong>{{ onlineSnapshot.game.scores[p.id] ?? 0 }}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="invitation-banner compact">
+          <div>
+            <span class="eyebrow" style="font-size: 11px;">Código de sala: </span>
+            <strong class="invitation-code" style="font-size: 16px;">{{ onlineInvitation }}</strong>
+          </div>
+          <button class="quiet copy-btn" style="min-height: 32px;" (click)="copyInvitationCode()">{{ copyStatus || 'Copiar código' }}</button>
+        </div>
+
+        <p *ngIf="onlineError" class="error" role="alert" style="margin: 6px 0;">{{ onlineError }}</p>
+
+        <div class="board-viewport">
+          <svg class="board" [attr.viewBox]="'-16 -16 ' + (onlineBoardWidth + 32) + ' ' + (onlineBoardHeight + 32)" role="img" aria-label="Tablero de juego online">
+            <g class="cells">
+              <rect *ngFor="let cell of onlineSnapshot.game.board.cells"
+                [attr.x]="cell.column * cellSize"
+                [attr.y]="cell.row * cellSize"
+                [attr.width]="cellSize"
+                [attr.height]="cellSize"
+                [class.claimed]="onlineSnapshot.game.cellOwners[cell.id]"
+                [style.fill]="onlineCellColor(cell.id)">
+              </rect>
+            </g>
+            <g class="edges">
+              <ng-container *ngFor="let edge of onlineSnapshot.game.board.edges">
+                <line class="edge-line"
+                  [class.occupied]="onlineSnapshot.game.occupiedEdges.includes(edge.id)"
+                  [class.hovered]="hoveredEdgeId === edge.id && !onlineSnapshot.game.occupiedEdges.includes(edge.id)"
+                  [style.stroke]="onlineEdgeLineColor(edge.id)"
+                  [style.stroke-width]="onlineEdgeLineWidth(edge.id)"
+                  [style.stroke-opacity]="onlineEdgeLineOpacity(edge.id)"
+                  [attr.x1]="edgeGeometry(edge).x1" [attr.y1]="edgeGeometry(edge).y1"
+                  [attr.x2]="edgeGeometry(edge).x2" [attr.y2]="edgeGeometry(edge).y2">
+                </line>
+                <line class="edge-hit"
+                  [class.occupied]="onlineSnapshot.game.occupiedEdges.includes(edge.id)"
+                  [style.cursor]="isMyTurn() && !onlineSnapshot.game.occupiedEdges.includes(edge.id) ? 'pointer' : 'default'"
+                  [attr.x1]="edgeGeometry(edge).x1" [attr.y1]="edgeGeometry(edge).y1"
+                  [attr.x2]="edgeGeometry(edge).x2" [attr.y2]="edgeGeometry(edge).y2"
+                  [attr.data-edge-id]="edge.id"
+                  (mouseenter)="hoveredEdgeId = edge.id"
+                  (mouseleave)="hoveredEdgeId = null"
+                  (click)="onlineMove(edge.id)">
+                </line>
+              </ng-container>
+            </g>
+            <g class="vertices">
+              <circle *ngFor="let v of onlineBoardVertices"
+                class="vertex-dot"
+                [attr.cx]="v.column * cellSize"
+                [attr.cy]="v.row * cellSize"
+                r="6">
+              </circle>
+            </g>
+          </svg>
+        </div>
+
+        <div *ngIf="onlineSnapshot.status === 'complete'" style="text-align: center; margin: 16px 0;">
+          <h2>¡Partida finalizada!</h2>
+          <p *ngIf="onlineSnapshot.result?.winners?.length">Ganador: <strong>{{ getParticipantName(onlineSnapshot.result.winners[0]) }}</strong></p>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+          <span class="connection-status" [class.connected]="onlineConnection.includes('Conectado')">{{ onlineConnection }}</span>
+          <button class="quiet leave-btn" (click)="exitOnline()">Salir de la sala</button>
+        </div>
+      </div>
+    </div>
+
+    <p *ngIf="onlineError" class="error" role="alert">{{ onlineError }}</p>
   </section>
-  <section *ngIf="screen === 'public'" class="panel public-room" aria-live="polite">
+    <section *ngIf="screen === 'public'" class="panel public-room" aria-live="polite">
     <button class="back" (click)="leavePublic()">← Inicio</button>
     <h1>Partida pública</h1>
     <p class="muted">El servidor te empareja con una sola persona. No necesitas cuenta ni código.</p>
@@ -215,6 +370,7 @@ import { UpdateCoordinator } from "./update-coordinator";
     .brand img{width:132px}
     .brand span{font-size:12px;color:#286198}
     .panel{max-width:680px;margin:24px auto;padding:28px;background:#fff;border:3px solid #082c7c;border-radius:28px;box-shadow:0 10px 0 #82c8eb}
+    .panel.online-room{max-width:840px}
     .home{text-align:center}
     .hero-icon{width:72px}
     .muted{color:#42648c}
@@ -230,14 +386,38 @@ import { UpdateCoordinator } from "./update-coordinator";
     .selected,.primary{background:#1e88ff!important;color:#fff!important}
     .player-form{display:grid;gap:10px}
     .player-form label{display:grid;grid-template-columns:1fr auto 1.4fr;align-items:center;gap:8px}
-    .player-form input,.player-form select,.board-choice input,.board-choice select{min-height:44px;border:2px solid #9acbe4;border-radius:10px;padding:0 10px;font:inherit;color:#082c7c;box-sizing:border-box;width:100%}
+    .player-form input,.player-form select,.board-choice input,.board-choice select,.online-card input,.online-card select,.field-label input{min-height:44px;border:2px solid #9acbe4;border-radius:10px;padding:0 10px;font:inherit;color:#082c7c;box-sizing:border-box;width:100%;background:#fff}
     .color-dot{display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #082c7c}
     .board-choice{display:flex;gap:12px;margin:14px 0}
+    .board-choice.compact{margin:6px 0}
     .board-choice label{flex:1}
-    .error{color:#a61732}
+    .error{color:#a61732;font-weight:600}
     .primary{width:100%;margin-top:10px;font-weight:700}
     .online-edges{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:6px}.online-edges button{min-height:44px}.public-room button{touch-action:manipulation}
     .back,.quiet{border:0;padding:6px 12px;background:transparent;min-height:44px}
+    .online-actions-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:stretch;margin:18px 0}
+    @media(max-width:640px){.online-actions-grid{grid-template-columns:1fr}.online-divider{display:none}}
+    .online-card{background:#f4faff;border:2px solid #9acbe4;border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px;text-align:left}
+    .online-card h2{margin:0;font-size:20px;color:#082c7c}
+    .online-divider{display:flex;align-items:center;justify-content:center;color:#42648c;font-weight:700}
+    .field-label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600;color:#082c7c}
+    .field-label input:focus{border-color:#1e88ff;outline:none}
+    .invitation-banner{display:flex;justify-content:space-between;align-items:center;background:#e8f4fc;border:2px dashed #1e88ff;border-radius:14px;padding:12px 18px;margin:16px 0}
+    .invitation-banner.compact{padding:6px 14px;margin:8px 0;font-size:13px}
+    .invitation-code{font-size:24px;letter-spacing:2px;color:#082c7c;font-family:monospace}
+    .copy-btn{color:#1e88ff;font-weight:700;cursor:pointer}
+    .participants-list{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+    .participant-badge{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #9acbe4;border-radius:20px;padding:4px 12px;font-size:14px}
+    .participant-badge.current{border-color:#1e88ff;background:#eef6ff;font-weight:700}
+    .you-badge{color:#1e88ff;font-size:12px}
+    .online-edges-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:12px}
+    .edge-btn{min-height:40px;border:2px solid #9acbe4;border-radius:8px;background:#fff;color:#082c7c;font-weight:600;cursor:pointer}
+    .edge-btn.occupied{background:#c0dbee;color:#6b8aa8;border-color:#c0dbee;cursor:not-allowed}
+    .edge-btn:not([disabled]):hover{background:#1e88ff;color:#fff;border-color:#1e88ff}
+    .connection-status{font-size:13px;color:#42648c;margin:6px 0}
+    .connection-status.connected{color:#147a32;font-weight:600}
+    .my-turn-badge{background:#1e88ff;color:#fff;border-radius:6px;padding:2px 6px;font-size:12px;margin-left:6px}
+    .leave-btn{margin-top:16px;color:#a61732}
     .game-screen{display:flex;flex-direction:column;min-height:calc(100vh - 100px)}
     .game-status{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
     .eyebrow{font-size:12px;margin:0;color:#42648c}
@@ -282,7 +462,10 @@ export class AppComponent {
   boardSelectionId = "classic";
   private readonly updates = new UpdateCoordinator();
 
-  constructor(private readonly swUpdate: SwUpdate) {
+  constructor(
+    private readonly swUpdate: SwUpdate,
+    private readonly cdr: ChangeDetectorRef
+  ) {
     if (swUpdate.isEnabled) {
       swUpdate.versionUpdates.subscribe((event) => {
         if (event.type === "VERSION_READY") {
@@ -313,14 +496,19 @@ export class AppComponent {
   private pointers = new Map<number, { x: number; y: number }>();
   private audioContext: AudioContext | null = null;
   machineMode = false;
-  onlineName = "Jugador";
+  onlineName = "Anfitrión";
+  onlineJoinName = "Invitado";
+  onlineRows = 2;
+  onlineColumns = 2;
+  isConnecting = false;
+  copyStatus = "";
   onlineInvitation = "";
   onlineRoomId = "";
   onlineParticipantId = "";
   onlineCredential = "";
   onlineSnapshot: any = null;
   onlineError = "";
-  onlineConnection = "Sin conexión";
+  onlineConnection = "";
   private onlineSocket?: WebSocket;
   publicSearchId = "";
   publicParticipantId = "";
@@ -336,27 +524,155 @@ export class AppComponent {
   private publicPoll?: ReturnType<typeof setInterval>;
   private publicSocket?: WebSocket;
 
+  copyInvitationCode() {
+    if (!this.onlineInvitation) return;
+    const text = this.onlineInvitation.trim();
+    const onSuccess = () => {
+      this.copyStatus = "¡Copiado!";
+      this.cdr.detectChanges();
+      setTimeout(() => {
+        this.copyStatus = "";
+        this.cdr.detectChanges();
+      }, 2500);
+    };
+
+    if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+        this.fallbackCopy(text, onSuccess);
+      });
+    } else {
+      this.fallbackCopy(text, onSuccess);
+    }
+  }
+
+  private fallbackCopy(text: string, onSuccess: () => void) {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "-9999px";
+      textarea.setAttribute("readonly", "");
+      document.body.appendChild(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (successful) {
+        onSuccess();
+      } else {
+        this.copyStatus = "Error al copiar";
+        this.cdr.detectChanges();
+      }
+    } catch {
+      this.copyStatus = "Error al copiar";
+      this.cdr.detectChanges();
+    }
+  }
+
+  exitOnline() {
+    if (this.onlineSocket) {
+      try { this.onlineSocket.close(); } catch {}
+      this.onlineSocket = undefined;
+    }
+    this.onlineRoomId = "";
+    this.onlineSnapshot = null;
+    this.onlineInvitation = "";
+    this.onlineError = "";
+    this.onlineConnection = "";
+    this.screen = "home";
+    this.cdr.detectChanges();
+  }
+
+  getParticipantColor(participantId: string): string {
+    const idx = (this.onlineSnapshot?.participants ?? []).findIndex((p: any) => p.id === participantId);
+    const colorName = idx >= 0 ? PLAYER_COLORS[idx % PLAYER_COLORS.length] : "blue";
+    return this.colorValue(colorName);
+  }
+
+  getParticipantName(participantId: string): string {
+    const p = (this.onlineSnapshot?.participants ?? []).find((p: any) => p.id === participantId);
+    return p ? p.name : participantId;
+  }
+
+  isMyTurn(): boolean {
+    return this.onlineSnapshot?.game?.currentPlayerId === this.onlineParticipantId;
+  }
+
+  get onlineBoardWidth(): number {
+    const cells = this.onlineSnapshot?.game?.board?.cells ?? [];
+    if (!cells.length) return 300;
+    return ((cells.reduce((max: number, cell: any) => Math.max(max, cell.column), 0)) + 1) * this.cellSize;
+  }
+
+  get onlineBoardHeight(): number {
+    const cells = this.onlineSnapshot?.game?.board?.cells ?? [];
+    if (!cells.length) return 300;
+    return ((cells.reduce((max: number, cell: any) => Math.max(max, cell.row), 0)) + 1) * this.cellSize;
+  }
+
+  get onlineBoardVertices(): readonly { row: number; column: number }[] {
+    return this.onlineSnapshot?.game?.board ? uniqueBoardVertices(this.onlineSnapshot.game.board) : [];
+  }
+
+  onlineCellColor(cellId: string): string {
+    const ownerId = this.onlineSnapshot?.game?.cellOwners?.[cellId];
+    return ownerId ? this.getParticipantColor(ownerId) : "transparent";
+  }
+
+  onlineEdgeLineColor(edgeId: string): string {
+    if (this.onlineSnapshot?.game?.occupiedEdges?.includes(edgeId)) {
+      return "#082c7c";
+    }
+    if (this.hoveredEdgeId === edgeId && this.isMyTurn()) {
+      return this.getParticipantColor(this.onlineParticipantId);
+    }
+    return "#c3e0f2";
+  }
+
+  onlineEdgeLineWidth(edgeId: string): number {
+    if (this.onlineSnapshot?.game?.occupiedEdges?.includes(edgeId)) return 6;
+    if (this.hoveredEdgeId === edgeId && this.isMyTurn()) return 6;
+    return 3;
+  }
+
+  onlineEdgeLineOpacity(edgeId: string): number {
+    if (this.onlineSnapshot?.game?.occupiedEdges?.includes(edgeId)) return 1;
+    if (this.hoveredEdgeId === edgeId && this.isMyTurn()) return 0.8;
+    return 0.45;
+  }
+
   connectOnlineSocket() {
     if (typeof window === "undefined" || !this.onlineRoomId) return;
     if (this.onlineSocket) {
       try { this.onlineSocket.close(); } catch {}
     }
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = protocol + "//" + window.location.host + "/rooms/" + this.onlineRoomId + "/ws";
+    const url = `${protocol}//${window.location.host}/api/rooms/${this.onlineRoomId}/ws`;
     const ws = new WebSocket(url);
     this.onlineSocket = ws;
+    ws.onopen = () => {
+      this.onlineConnection = "Conectado en tiempo real";
+      this.cdr.detectChanges();
+    };
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "ack" || data.type === "snapshot") {
           if (data.snapshot) {
             this.onlineSnapshot = data.snapshot;
+            try { this.playSound(data.completedCells?.length ? "capture" : "click"); } catch {}
+            this.cdr.detectChanges();
           }
         }
       } catch {}
     };
     ws.onclose = () => {
-      if (this.onlineSocket === ws) this.onlineSocket = undefined;
+      if (this.onlineSocket === ws) {
+        this.onlineSocket = undefined;
+        this.onlineConnection = "Desconectado del servidor";
+        this.cdr.detectChanges();
+      }
     };
   }
 
@@ -366,8 +682,19 @@ export class AppComponent {
   dragCurrentPoint: { x: number; y: number } | null = null;
 
   chooseMode(mode: GameMode) {
-    if (mode === "private") { this.onlineError = ""; this.screen = "online"; return; }
-    if (mode === "public") { this.publicError = ""; this.publicStatus = "Listo para buscar rival"; this.screen = "public"; return; }
+    if (mode === "public") {
+      this.publicError = "";
+      this.publicStatus = "Listo para buscar rival";
+      this.screen = "public";
+      return;
+    }
+    if (mode === "private") {
+      this.onlineError = "";
+      this.onlineConnection = "";
+      this.screen = "online";
+      this.cdr.detectChanges();
+      return;
+    }
     if (mode === "local" || mode === "machine") {
       this.machineMode = mode === "machine";
       this.setPlayerCount(this.machineMode ? 2 : 2);
@@ -375,7 +702,7 @@ export class AppComponent {
     }
   }
 
-  async startPublicSearch() {
+    async startPublicSearch() {
     try {
       const response = await fetch("/public/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: this.onlineName }) });
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error ?? "No se pudo buscar rival.");
@@ -397,7 +724,7 @@ export class AppComponent {
     if (this.publicSearch.matchId) { this.publicMatchId = this.publicSearch.matchId; const matchResponse = await fetch(`/public/matches/${this.publicMatchId}`); this.publicMatch = await matchResponse.json(); this.publicStatus = "Rival confirmado por servidor"; this.stopPublicPolling(); this.connectPublicSocket(); }
   }
   async cancelPublicSearch() { if (!this.publicSearchId) return; const response = await fetch(`/public/search/${this.publicSearchId}/cancel`, { method: "POST" }); this.publicSearch = await response.json(); this.stopPublicPolling(); this.publicStatus = "Búsqueda cancelada por el servidor"; }
-  async continuePublicSearch() { const response = await fetch(`/public/search/${this.publicSearchId}/continue`, { method: "POST" }); this.publicSearch = await response.json(); this.publicStatus = "Buscando rival…"; this.startPublicPolling(); }
+  async continuePublicSearch() { const response = await fetch(`/public/search/${this.publicSearchId}/continue`, { method: "POST" }); this.publicSearch = await response.json(); this.stopPublicPolling(); this.publicStatus = "Buscando rival…"; this.startPublicPolling(); }
   async playPublicMachine() { const response = await fetch(`/public/search/${this.publicSearchId}/machine`, { method: "POST" }); const payload = await response.json(); if (response.ok) { this.stopPublicPolling(); this.publicSearch = payload.search; this.publicSearchId = ""; this.publicStatus = "Partida separada contra la máquina"; this.chooseMode("machine"); } else this.publicError = payload.error ?? "No se pudo iniciar la partida."; }
   leavePublic() { this.stopPublicPolling(); try { this.publicSocket?.close(); } catch {} this.publicSearchId = ""; this.publicMatch = null; this.publicSearch = null; this.screen = "home"; }
   connectPublicSocket() {
@@ -414,17 +741,50 @@ export class AppComponent {
   }
 
   async createPrivateRoom() {
-    await this.privateRequest("/rooms", { name: this.onlineName, selection: { kind: "classic", rows: 2, columns: 2 } }, true);
+    this.isConnecting = true;
+    this.onlineError = "";
+    this.onlineConnection = "Creando sala...";
+    this.cdr.detectChanges();
+    try {
+      await this.privateRequest("/api/rooms", {
+        name: this.onlineName.trim() || "Anfitrión",
+        selection: { kind: "classic", rows: this.onlineRows, columns: this.onlineColumns }
+      }, true);
+    } finally {
+      this.isConnecting = false;
+      this.cdr.detectChanges();
+    }
   }
 
   async joinPrivateRoom() {
-    if (!this.onlineInvitation.trim()) { this.onlineError = "Escribe el código de invitación."; return; }
-    await this.privateRequest(`/rooms/${encodeURIComponent(this.onlineInvitation)}/join`, { name: this.onlineName, invitationCode: this.onlineInvitation }, false);
+    const code = this.onlineInvitation.trim();
+    if (!code) {
+      this.onlineError = "Escribe el código de invitación que te compartieron.";
+      this.cdr.detectChanges();
+      return;
+    }
+    this.isConnecting = true;
+    this.onlineError = "";
+    this.onlineConnection = "Conectando con la sala...";
+    this.cdr.detectChanges();
+    try {
+      await this.privateRequest(`/api/rooms/${encodeURIComponent(code)}/join`, {
+        name: this.onlineJoinName.trim() || "Invitado",
+        invitationCode: code
+      }, false);
+    } finally {
+      this.isConnecting = false;
+      this.cdr.detectChanges();
+    }
   }
 
   private async privateRequest(path: string, body: unknown, creating: boolean) {
     try {
-      const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "No se pudo acceder a la sala.");
       this.onlineRoomId = payload.roomId ?? payload.snapshot?.roomId ?? this.onlineRoomId;
@@ -432,18 +792,52 @@ export class AppComponent {
       this.onlineCredential = payload.reconnectCredential;
       this.onlineSnapshot = payload.snapshot;
       this.onlineInvitation = payload.invitationCode ?? this.onlineInvitation;
-      this.onlineConnection = "Confirmado por servidor";
-      this.onlineError = creating ? "Comparte este código: " + this.onlineInvitation : "Entrada confirmada.";
+      this.onlineConnection = "Conectado al servidor";
+      this.onlineError = "";
       this.connectOnlineSocket();
-    } catch (error) { this.onlineConnection = "Rechazado"; this.onlineError = error instanceof Error ? error.message : "No se pudo acceder a la sala."; }
+      this.cdr.detectChanges();
+    } catch (error) {
+      this.onlineConnection = "Error de conexión";
+      this.onlineError = error instanceof Error ? error.message : "No se pudo acceder a la sala.";
+      this.cdr.detectChanges();
+    }
   }
 
   async onlineMove(edgeId: string) {
-    if (!this.onlineSnapshot) return;
-    const response = await fetch(`/rooms/${this.onlineRoomId}/commands`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ protocolVersion: 1, commandId: crypto.randomUUID(), participantId: this.onlineParticipantId, credential: this.onlineCredential, version: this.onlineSnapshot.version, edgeId }) });
-    const payload = await response.json();
-    if (response.ok) this.onlineSnapshot = payload.snapshot;
-    else this.onlineError = payload.code === "forbidden" ? "No es tu turno." : "La jugada fue rechazada por el servidor.";
+    if (!this.onlineSnapshot || !this.onlineRoomId) return;
+    if (!this.isMyTurn()) {
+      this.onlineError = "Es el turno de " + this.getParticipantName(this.onlineSnapshot.game?.currentPlayerId);
+      this.cdr.detectChanges();
+      return;
+    }
+    if (this.onlineSnapshot.game?.occupiedEdges?.includes(edgeId)) return;
+
+    try {
+      const response = await fetch(`/api/rooms/${this.onlineRoomId}/commands`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          protocolVersion: 1,
+          commandId: generateUUID(),
+          participantId: this.onlineParticipantId,
+          credential: this.onlineCredential,
+          version: this.onlineSnapshot.version,
+          edgeId
+        })
+      });
+      const payload = await response.json();
+      if (response.ok) {
+        this.onlineSnapshot = payload.snapshot ?? this.onlineSnapshot;
+        this.onlineError = "";
+        try { this.playSound(payload.completedCells?.length ? "capture" : "click"); } catch {}
+      } else {
+        this.onlineError = payload.code === "forbidden" ? "No es tu turno." : (payload.error ?? "La jugada fue rechazada por el servidor.");
+      }
+      this.cdr.detectChanges();
+    } catch (err) {
+      this.onlineError = err instanceof Error ? err.message : "Error de comunicación con el servidor.";
+      this.cdr.detectChanges();
+    }
   }
 
   setPlayerCount(count: number) {
@@ -784,3 +1178,14 @@ export class AppComponent {
 
 function distance(a: { x: number; y: number }, b: { x: number; y: number }) { return Math.hypot(a.x - b.x, a.y - b.y); }
 function midpoint(a: { x: number; y: number }, b: { x: number; y: number }) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
