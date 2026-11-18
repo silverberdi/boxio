@@ -404,7 +404,7 @@ export class AppComponent {
     if (!this.publicMatchId || typeof window === "undefined") return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"; const socket = new WebSocket(`${protocol}//${window.location.host}/public/matches/${this.publicMatchId}/ws`); this.publicSocket = socket;
     socket.onopen = () => { this.publicConnection = "Conectado"; this.publicDisconnected = false; };
-    socket.onmessage = (event) => { try { const data = JSON.parse(event.data); if (data.snapshot) { this.publicMatch = data.snapshot; const seat = data.snapshot.participants?.find((p: any) => p.id === this.publicParticipantId); this.publicDisconnected = seat?.status === "reserved"; this.publicReservationExpiresAt = seat?.reservationExpiresAt ?? ""; } } catch {} };
+    socket.onmessage = (event) => { try { const data = JSON.parse(event.data); const snapshot = data.snapshot ?? (data.matchId ? data : undefined); if (snapshot) { this.publicMatch = snapshot; const seat = snapshot.participants?.find((p: any) => p.id === this.publicParticipantId); this.publicDisconnected = seat?.status === "reserved"; this.publicReservationExpiresAt = seat?.reservationExpiresAt ?? ""; } } catch {} };
     socket.onclose = () => { this.publicConnection = "Desconectado"; this.publicDisconnected = true; };
   }
   async publicMove(edgeId: string) {

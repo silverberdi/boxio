@@ -119,7 +119,7 @@ export function buildServer(
     void publicMatchmaking.expire(publicClock()).then((snapshots) => {
       for (const snap of snapshots) {
         if (snap.status === "abandoned" || snap.status === "complete") {
-          publicBroadcast(snap.matchId, snap);
+          publicBroadcast(snap.matchId, { type: "snapshot", snapshot: snap });
         }
       }
     });

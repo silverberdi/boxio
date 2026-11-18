@@ -26,7 +26,7 @@ export class PostgresPublicMatchmakingPersistence implements PublicMatchmakingPe
 
   async save(state: StoredState): Promise<void> {
     const write = async (query: PostgresQuery): Promise<void> => {
-      await query("DELETE FROM public_matchmaking_searches WHERE status IN ('searching', 'matched', 'cancelled')");
+      // Upserts are idempotent; no destructive mass delete
       for (const search of state.searches) {
         await query(
           `INSERT INTO public_matchmaking_searches
