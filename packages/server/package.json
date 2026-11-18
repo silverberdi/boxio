@@ -10,8 +10,10 @@
   "dependencies": {
     "@boxio/engine": "0.1.0",
     "@fastify/websocket": "11.2.0",
-    "@types/pg": "^8.23.1",
     "fastify": "5.12.8",
     "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
   }
 }

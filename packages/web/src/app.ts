@@ -219,6 +219,31 @@ import { UpdateCoordinator } from "./update-coordinator";
 
     <p *ngIf="onlineError" class="error" role="alert">{{ onlineError }}</p>
   </section>
+    <section *ngIf="screen === 'public'" class="panel public-room" aria-live="polite">
+    <button class="back" (click)="leavePublic()">← Inicio</button>
+    <h1>Partida pública</h1>
+    <p class="muted">El servidor te empareja con una sola persona. No necesitas cuenta ni código.</p>
+    <label>Tu apodo <input [value]="onlineName" (input)="onlineName = $any($event.target).value" maxlength="18" aria-label="Apodo para partida pública"></label>
+    <p role="status">{{ publicStatus }}</p>
+    <p *ngIf="publicConnection" class="muted">Conexión: {{ publicConnection }}</p>
+    <p *ngIf="publicError" class="error" role="alert">{{ publicError }}</p>
+    <button *ngIf="!publicSearchId" class="primary" (click)="startPublicSearch()">Buscar rival</button>
+    <button *ngIf="publicSearchId && publicSearch?.status === 'searching'" class="quiet" (click)="cancelPublicSearch()">Cancelar búsqueda</button>
+    <ng-container *ngIf="publicSearch?.timedOut">
+      <p class="timeout-note">No encontramos rival en 60 segundos.</p>
+      <button class="primary" (click)="playPublicMachine()">Jugar contra la máquina (partida separada)</button>
+      <button class="quiet" (click)="continuePublicSearch()">Continuar buscando</button>
+      <button class="quiet" (click)="cancelPublicSearch()">Cancelar</button>
+    </ng-container>
+    <div *ngIf="publicMatch" class="online-state">
+      <p>Rival confirmado. Partida pública 1 contra 1.</p>
+      <p>Estado confirmado: {{ publicMatch.status }} · Versión {{ publicMatch.version }}</p>
+      <p *ngIf="publicMatch.status === 'abandoned'" role="status">Victoria por abandono: el rival no regresó dentro de la reserva de 60 segundos.</p>
+      <p *ngIf="publicMatch.status === 'complete' && publicMatch.result?.cause === 'normal'" role="status">Partida terminada por puntuación.</p>
+      <p *ngIf="publicMatch.status === 'active' && publicDisconnected" role="status">Desconectado. Tu reserva termina a {{ publicReservationExpiresAt || 'los 60 segundos' }}.</p>
+      <div class="online-edges"><button *ngFor="let edge of publicMatch.game.board.edges" [disabled]="publicMatch.game.occupiedEdges.includes(edge.id)" (click)="publicMove(edge.id)">{{ edge.id }}</button></div>
+    </div>
+  </section>
   <section *ngIf="screen === 'setup'" class="panel setup">
     <button class="back" (click)="screen = 'home'">← Inicio</button>
     <h1>Prepara tu partida</h1>
@@ -368,6 +393,7 @@ import { UpdateCoordinator } from "./update-coordinator";
     .board-choice label{flex:1}
     .error{color:#a61732;font-weight:600}
     .primary{width:100%;margin-top:10px;font-weight:700}
+    .online-edges{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:6px}.online-edges button{min-height:44px}.public-room button{touch-action:manipulation}
     .back,.quiet{border:0;padding:6px 12px;background:transparent;min-height:44px}
     .online-actions-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:stretch;margin:18px 0}
     @media(max-width:640px){.online-actions-grid{grid-template-columns:1fr}.online-divider{display:none}}
@@ -422,10 +448,11 @@ import { UpdateCoordinator } from "./update-coordinator";
     .final-score strong{font-size:28px}
     @media(max-width:600px){.app-shell{padding:12px 10px}.brand span{font-size:11px}.game-status{display:block}.scores{justify-content:flex-start}.score{flex:1;min-width:80px}.board-viewport{min-height:320px}.mode-grid{gap:8px}.mode-card{padding:10px 5px}.panel{padding:20px 16px;margin-top:14px}}
     @media(min-width:800px){.board-viewport{min-height:540px}.game-status{padding:0 12px}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
   `]
 })
 export class AppComponent {
-  screen: "home" | "setup" | "online" | "game" | "result" = "home";
+  screen: "home" | "setup" | "online" | "public" | "game" | "result" = "home";
   modes = MODES;
   soundCount = Object.keys(soundCatalog).length;
   playerCount = 2;
@@ -483,6 +510,19 @@ export class AppComponent {
   onlineError = "";
   onlineConnection = "";
   private onlineSocket?: WebSocket;
+  publicSearchId = "";
+  publicParticipantId = "";
+  publicCredential = "";
+  publicMatchId = "";
+  publicSearch: any = null;
+  publicMatch: any = null;
+  publicStatus = "Listo para buscar rival";
+  publicError = "";
+  publicConnection = "Sin conexión";
+  publicDisconnected = false;
+  publicReservationExpiresAt = "";
+  private publicPoll?: ReturnType<typeof setInterval>;
+  private publicSocket?: WebSocket;
 
   copyInvitationCode() {
     if (!this.onlineInvitation) return;
@@ -642,6 +682,12 @@ export class AppComponent {
   dragCurrentPoint: { x: number; y: number } | null = null;
 
   chooseMode(mode: GameMode) {
+    if (mode === "public") {
+      this.publicError = "";
+      this.publicStatus = "Listo para buscar rival";
+      this.screen = "public";
+      return;
+    }
     if (mode === "private") {
       this.onlineError = "";
       this.onlineConnection = "";
@@ -654,6 +700,44 @@ export class AppComponent {
       this.setPlayerCount(this.machineMode ? 2 : 2);
       this.screen = "setup";
     }
+  }
+
+    async startPublicSearch() {
+    try {
+      const response = await fetch("/public/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: this.onlineName }) });
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.error ?? "No se pudo buscar rival.");
+      this.publicSearchId = payload.search.searchId; this.publicParticipantId = payload.participantId; this.publicCredential = payload.reconnectCredential; this.publicSearch = payload.search; this.publicMatch = payload.match ?? null; this.publicMatchId = payload.search.matchId ?? "";
+      this.publicStatus = this.publicMatch ? "Rival confirmado por servidor" : "Buscando rival…";
+      if (this.publicMatch) this.connectPublicSocket(); else this.startPublicPolling();
+    } catch (error) { this.publicError = error instanceof Error ? error.message : "No se pudo buscar rival."; }
+  }
+  private startPublicPolling() {
+    this.stopPublicPolling();
+    void this.refreshPublicSearch();
+    this.publicPoll = setInterval(() => void this.refreshPublicSearch(), 1000);
+  }
+  private stopPublicPolling() { if (this.publicPoll) clearInterval(this.publicPoll); this.publicPoll = undefined; }
+  private async refreshPublicSearch() {
+    if (!this.publicSearchId || this.publicMatch) return;
+    const response = await fetch(`/public/search/${this.publicSearchId}`); if (!response.ok) return;
+    this.publicSearch = await response.json(); this.publicStatus = this.publicSearch.timedOut ? "Sin rival tras 60 segundos" : "Buscando rival…";
+    if (this.publicSearch.matchId) { this.publicMatchId = this.publicSearch.matchId; const matchResponse = await fetch(`/public/matches/${this.publicMatchId}`); this.publicMatch = await matchResponse.json(); this.publicStatus = "Rival confirmado por servidor"; this.stopPublicPolling(); this.connectPublicSocket(); }
+  }
+  async cancelPublicSearch() { if (!this.publicSearchId) return; const response = await fetch(`/public/search/${this.publicSearchId}/cancel`, { method: "POST" }); this.publicSearch = await response.json(); this.stopPublicPolling(); this.publicStatus = "Búsqueda cancelada por el servidor"; }
+  async continuePublicSearch() { const response = await fetch(`/public/search/${this.publicSearchId}/continue`, { method: "POST" }); this.publicSearch = await response.json(); this.stopPublicPolling(); this.publicStatus = "Buscando rival…"; this.startPublicPolling(); }
+  async playPublicMachine() { const response = await fetch(`/public/search/${this.publicSearchId}/machine`, { method: "POST" }); const payload = await response.json(); if (response.ok) { this.stopPublicPolling(); this.publicSearch = payload.search; this.publicSearchId = ""; this.publicStatus = "Partida separada contra la máquina"; this.chooseMode("machine"); } else this.publicError = payload.error ?? "No se pudo iniciar la partida."; }
+  leavePublic() { this.stopPublicPolling(); try { this.publicSocket?.close(); } catch {} this.publicSearchId = ""; this.publicMatch = null; this.publicSearch = null; this.screen = "home"; }
+  connectPublicSocket() {
+    if (!this.publicMatchId || typeof window === "undefined") return;
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"; const socket = new WebSocket(`${protocol}//${window.location.host}/public/matches/${this.publicMatchId}/ws`); this.publicSocket = socket;
+    socket.onopen = () => { this.publicConnection = "Conectado"; this.publicDisconnected = false; };
+    socket.onmessage = (event) => { try { const data = JSON.parse(event.data); const snapshot = data.snapshot ?? (data.matchId ? data : undefined); if (snapshot) { this.publicMatch = snapshot; const seat = snapshot.participants?.find((p: any) => p.id === this.publicParticipantId); this.publicDisconnected = seat?.status === "reserved"; this.publicReservationExpiresAt = seat?.reservationExpiresAt ?? ""; } } catch {} };
+    socket.onclose = () => { this.publicConnection = "Desconectado"; this.publicDisconnected = true; };
+  }
+  async publicMove(edgeId: string) {
+    if (!this.publicMatch) return;
+    const response = await fetch(`/public/matches/${this.publicMatchId}/commands`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ protocolVersion: 1, commandId: crypto.randomUUID(), participantId: this.publicParticipantId, credential: this.publicCredential, version: this.publicMatch.version, edgeId }) });
+    const payload = await response.json(); if (response.ok) this.publicMatch = payload.snapshot; else this.publicError = "La jugada fue rechazada por el servidor.";
   }
 
   async createPrivateRoom() {
