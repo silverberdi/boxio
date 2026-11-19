@@ -2,6 +2,41 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildServer } from "./index.js";
 import { testPublicPersistence } from "./test-public-persistence.js";
+import WebSocket from "ws";
+
+function receive(socket: WebSocket): Promise<any> {
+  return new Promise((resolve, reject) => {
+    socket.once("message", (data) => resolve(JSON.parse(data.toString())));
+    socket.once("error", reject);
+  });
+}
+
+test("two real public WebSocket sessions receive ordered authoritative snapshots", { timeout: 5_000 }, async () => {
+  const app = buildServer(undefined, testPublicPersistence());
+  await app.listen({ host: "127.0.0.1", port: 0 });
+  const address = app.server.address();
+  assert.ok(address && typeof address !== "string");
+  const base = `ws://127.0.0.1:${address.port}`;
+  const one = (await app.inject({ method: "POST", url: "/public/search", payload: { name: "Uno" } })).json();
+  const two = (await app.inject({ method: "POST", url: "/public/search", payload: { name: "Dos" } })).json();
+  const matchId = two.search.matchId;
+  assert.ok(matchId);
+  const sockets = [one, two].map(() => new WebSocket(`${base}/public/matches/${matchId}/ws`));
+  const initial = await Promise.all(sockets.map(receive));
+  assert.deepEqual(initial.map((message) => message.snapshot.version), [0, 0]);
+  const snapshot = initial[0].snapshot;
+  const current = snapshot.participants.find((participant: any) => participant.id === snapshot.game.currentPlayerId);
+  const entry = [one, two].find((candidate) => candidate.participantId === current.id);
+  assert.ok(entry);
+  const command = { protocolVersion: 1, commandId: "proxy-contract-command", participantId: current.id, credential: entry.reconnectCredential, version: snapshot.version, edgeId: snapshot.game.board.edges[0].id };
+  const response = await app.inject({ method: "POST", url: `/public/matches/${matchId}/commands`, payload: command });
+  assert.equal(response.statusCode, 200);
+  const events = await Promise.all(sockets.map(receive));
+  assert.deepEqual(events.map((message) => message.snapshot.version), [1, 1]);
+  assert.deepEqual(events[0].snapshot, events[1].snapshot);
+  sockets.forEach((socket) => socket.close());
+  await app.close();
+});
 
 test("real HTTP flow pairs two guests, exposes authoritative snapshot and cancels a third search", async () => {
   const app = buildServer(undefined, testPublicPersistence());
