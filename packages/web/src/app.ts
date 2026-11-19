@@ -748,8 +748,9 @@ export class AppComponent {
       const payload = await response.json(); if (!response.ok) throw new Error(payload.error ?? "No se pudo buscar rival.");
       this.publicSearchId = payload.search.searchId; this.publicParticipantId = payload.participantId; this.publicCredential = payload.reconnectCredential; this.publicSearch = payload.search; this.publicMatch = payload.match ?? null; this.publicMatchId = payload.search.matchId ?? "";
       this.publicStatus = this.publicMatch ? "Rival confirmado por servidor" : "Buscando rival…";
+      this.renderPublicState();
       if (this.publicMatch) this.connectPublicSocket(); else this.startPublicPolling();
-    } catch (error) { this.publicError = error instanceof Error ? error.message : "No se pudo buscar rival."; }
+    } catch (error) { this.publicError = error instanceof Error ? error.message : "No se pudo buscar rival."; this.renderPublicState(); }
   }
   private startPublicPolling() {
     this.stopPublicPolling();
@@ -757,27 +758,29 @@ export class AppComponent {
     this.publicPoll = setInterval(() => void this.refreshPublicSearch(), 1000);
   }
   private stopPublicPolling() { if (this.publicPoll) clearInterval(this.publicPoll); this.publicPoll = undefined; }
+  private renderPublicState() { this.cdr.detectChanges(); }
   private async refreshPublicSearch() {
     if (!this.publicSearchId || this.publicMatch) return;
     const response = await fetch(`/api/public/search/${this.publicSearchId}`); if (!response.ok) return;
     this.publicSearch = await response.json(); this.publicStatus = this.publicSearch.timedOut ? "Sin rival tras 60 segundos" : "Buscando rival…";
-    if (this.publicSearch.matchId) { this.publicMatchId = this.publicSearch.matchId; const matchResponse = await fetch(`/api/public/matches/${this.publicMatchId}`); this.publicMatch = await matchResponse.json(); this.publicStatus = "Rival confirmado por servidor"; this.stopPublicPolling(); this.connectPublicSocket(); }
+    this.renderPublicState();
+    if (this.publicSearch.matchId) { this.publicMatchId = this.publicSearch.matchId; const matchResponse = await fetch(`/api/public/matches/${this.publicMatchId}`); this.publicMatch = await matchResponse.json(); this.publicStatus = "Rival confirmado por servidor"; this.stopPublicPolling(); this.renderPublicState(); this.connectPublicSocket(); }
   }
-  async cancelPublicSearch() { if (!this.publicSearchId) return; const response = await fetch(`/api/public/search/${this.publicSearchId}/cancel`, { method: "POST" }); this.publicSearch = await response.json(); this.stopPublicPolling(); this.publicStatus = "Búsqueda cancelada por el servidor"; }
-  async continuePublicSearch() { const response = await fetch(`/api/public/search/${this.publicSearchId}/continue`, { method: "POST" }); this.publicSearch = await response.json(); this.stopPublicPolling(); this.publicStatus = "Buscando rival…"; this.startPublicPolling(); }
-  async playPublicMachine() { const response = await fetch(`/api/public/search/${this.publicSearchId}/machine`, { method: "POST" }); const payload = await response.json(); if (response.ok) { this.stopPublicPolling(); this.publicSearch = payload.search; this.publicSearchId = ""; this.publicStatus = "Partida separada contra la máquina"; this.chooseMode("machine"); } else this.publicError = payload.error ?? "No se pudo iniciar la partida."; }
-  leavePublic() { this.stopPublicPolling(); try { this.publicSocket?.close(); } catch {} this.publicSearchId = ""; this.publicMatch = null; this.publicSearch = null; this.screen = "home"; }
+  async cancelPublicSearch() { if (!this.publicSearchId) return; const response = await fetch(`/api/public/search/${this.publicSearchId}/cancel`, { method: "POST" }); this.publicSearch = await response.json(); this.stopPublicPolling(); this.publicStatus = "Búsqueda cancelada por el servidor"; this.renderPublicState(); }
+  async continuePublicSearch() { const response = await fetch(`/api/public/search/${this.publicSearchId}/continue`, { method: "POST" }); this.publicSearch = await response.json(); this.stopPublicPolling(); this.publicStatus = "Buscando rival…"; this.renderPublicState(); this.startPublicPolling(); }
+  async playPublicMachine() { const response = await fetch(`/api/public/search/${this.publicSearchId}/machine`, { method: "POST" }); const payload = await response.json(); if (response.ok) { this.stopPublicPolling(); this.publicSearch = payload.search; this.publicSearchId = ""; this.publicStatus = "Partida separada contra la máquina"; this.renderPublicState(); this.chooseMode("machine"); } else { this.publicError = payload.error ?? "No se pudo iniciar la partida."; this.renderPublicState(); } }
+  leavePublic() { this.stopPublicPolling(); try { this.publicSocket?.close(); } catch {} this.publicSearchId = ""; this.publicMatch = null; this.publicSearch = null; this.screen = "home"; this.renderPublicState(); }
   connectPublicSocket() {
     if (!this.publicMatchId || typeof window === "undefined") return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"; const socket = new WebSocket(`${protocol}//${window.location.host}/api/public/matches/${this.publicMatchId}/ws`); this.publicSocket = socket;
-    socket.onopen = () => { this.publicConnection = "Conectado"; this.publicDisconnected = false; };
-    socket.onmessage = (event) => { try { const data = JSON.parse(event.data); const snapshot = data.snapshot ?? (data.matchId ? data : undefined); if (snapshot) { this.publicMatch = snapshot; const seat = snapshot.participants?.find((p: any) => p.id === this.publicParticipantId); this.publicDisconnected = seat?.status === "reserved"; this.publicReservationExpiresAt = seat?.reservationExpiresAt ?? ""; } } catch {} };
-    socket.onclose = () => { this.publicConnection = "Desconectado"; this.publicDisconnected = true; };
+    socket.onopen = () => { this.publicConnection = "Conectado"; this.publicDisconnected = false; this.renderPublicState(); };
+    socket.onmessage = (event) => { try { const data = JSON.parse(event.data); const snapshot = data.snapshot ?? (data.matchId ? data : undefined); if (snapshot) { this.publicMatch = snapshot; const seat = snapshot.participants?.find((p: any) => p.id === this.publicParticipantId); this.publicDisconnected = seat?.status === "reserved"; this.publicReservationExpiresAt = seat?.reservationExpiresAt ?? ""; this.renderPublicState(); } } catch {} };
+    socket.onclose = () => { this.publicConnection = "Desconectado"; this.publicDisconnected = true; this.renderPublicState(); };
   }
   async publicMove(edgeId: string) {
     if (!this.publicMatch) return;
     const response = await fetch(`/api/public/matches/${this.publicMatchId}/commands`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ protocolVersion: 1, commandId: crypto.randomUUID(), participantId: this.publicParticipantId, credential: this.publicCredential, version: this.publicMatch.version, edgeId }) });
-    const payload = await response.json(); if (response.ok) this.publicMatch = payload.snapshot; else this.publicError = "La jugada fue rechazada por el servidor.";
+    const payload = await response.json(); if (response.ok) this.publicMatch = payload.snapshot; else this.publicError = "La jugada fue rechazada por el servidor."; this.renderPublicState();
   }
 
   async createPrivateRoom() {

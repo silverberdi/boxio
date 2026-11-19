@@ -1,22 +1,31 @@
 {
   "name": "boxio",
   "private": true,
-  "workspaces": ["packages/engine", "packages/server", "packages/web"],
+  "workspaces": [
+    "packages/engine",
+    "packages/server",
+    "packages/web"
+  ],
   "scripts": {
     "install:clean": "npm ci",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run build && npm run test --workspaces --if-present",
     "check:assets": "node scripts/generate-pwa-icons.mjs && node scripts/check-assets.mjs",
     "test:pwa:e2e": "npm run build --workspace @boxio/web -- --configuration production && node scripts/pwa-e2e.mjs",
-    "diagnostics": "node scripts/diagnostics.mjs"
+    "diagnostics": "node scripts/diagnostics.mjs",
+    "test:playwright:public": "node scripts/playwright-public-e2e.mjs"
   },
-  "engines": { "node": ">=22.22.1 <23", "npm": ">=9.2.0 <10" },
+  "engines": {
+    "node": ">=22.22.1 <23",
+    "npm": ">=9.2.0 <10"
+  },
   "devDependencies": {
     "@angular-devkit/build-angular": "21.2.26",
     "@angular/cli": "21.2.26",
     "@angular/compiler-cli": "21.2.26",
     "@types/node": "22.15.3",
     "typescript": "5.9.3",
-    "vitest": "4.1.12"
+    "vitest": "4.1.12",
+    "@playwright/test": "^1.52.0"
   }
 }
